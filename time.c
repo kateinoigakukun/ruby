@@ -45,6 +45,10 @@
 
 #include "builtin.h"
 
+#if defined(__wasi__)
+void tzset() {}
+#endif
+
 static ID id_submicro, id_nano_num, id_nano_den, id_offset, id_zone;
 static ID id_nanosecond, id_microsecond, id_millisecond, id_nsec, id_usec;
 static ID id_local_to_utc, id_utc_to_local, id_find_timezone;

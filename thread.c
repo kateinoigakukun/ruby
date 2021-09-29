@@ -355,28 +355,7 @@ ubf_sigwait(void *ignore)
     rb_thread_wakeup_timer_thread(0);
 }
 
-#if   defined(_WIN32)
-#include "thread_win32.c"
-
-#define DEBUG_OUT() \
-  WaitForSingleObject(&debug_mutex, INFINITE); \
-  printf(POSITION_FORMAT"%#lx - %s" POSITION_ARGS, GetCurrentThreadId(), buf); \
-  fflush(stdout); \
-  ReleaseMutex(&debug_mutex);
-
-#elif defined(HAVE_PTHREAD_H)
-#include "thread_pthread.c"
-
-#define DEBUG_OUT() \
-  pthread_mutex_lock(&debug_mutex); \
-  printf(POSITION_FORMAT"%"PRI_THREAD_ID" - %s" POSITION_ARGS, \
-	 fill_thread_id_string(pthread_self(), thread_id_string), buf);	\
-  fflush(stdout); \
-  pthread_mutex_unlock(&debug_mutex);
-
-#else
-#error "unsupported thread type"
-#endif
+#include THREAD_IMPL_SRC
 
 /*
  * TODO: somebody with win32 knowledge should be able to get rid of
@@ -4307,6 +4286,9 @@ sigwait_timeout(rb_thread_t *th, int sigwait_fd, const rb_hrtime_t *orig,
 static VALUE
 do_select(VALUE p)
 {
+#if defined(__wasi__)
+    return (VALUE)0;
+#else
     struct select_set *set = (struct select_set *)p;
     int result = 0;
     int lerrno;
@@ -4353,6 +4335,7 @@ do_select(VALUE p)
     }
 
     return (VALUE)result;
+#endif
 }
 
 static rb_fdset_t *

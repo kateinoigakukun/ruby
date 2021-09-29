@@ -738,7 +738,7 @@ AS_IF([test "$GCC" = yes], [
 
     # -fstack-protector
     AS_CASE(["$target_os"],
-    [mingw*|emscripten*], [
+    [mingw*|emscripten*|wasi*], [
 	stack_protector=no
     ])
     AS_IF([test -z "${stack_protector+set}"], [
@@ -1887,7 +1887,7 @@ AC_DEFUN([RUBY_REQUIRE_FUNC], [
     AS_IF([test "$ac_cv_func_[]AS_TR_SH($1)" = yes], [],
           [AC_MSG_ERROR($1[() must be supported])])
 ])
-m4_map_args_w([dup dup2], [RUBY_REQUIRE_FUNC(], [)])
+# m4_map_args_w([dup dup2], [RUBY_REQUIRE_FUNC(], [)])
 
 AC_REPLACE_FUNCS(acosh)
 AC_REPLACE_FUNCS(cbrt)
@@ -3742,6 +3742,9 @@ AS_CASE(["$target_os"],
 	  CFLAGS="$CFLAGS -std"
 	])
 	],
+    [wasi*], [
+     	THREAD_MODEL=none
+	],
     [cygwin*|msys*|mingw*], [
 	LIBRUBY_DLDFLAGS="${LIBRUBY_DLDFLAGS}"' -Wl,--out-implib=$(LIBRUBY)'
 	AS_CASE(["$target_os"],
@@ -3788,8 +3791,18 @@ MINIOBJS="$MINIDLNOBJ"
 AS_CASE(["$THREAD_MODEL"],
 [pthread], [AC_CHECK_HEADERS(pthread.h)],
 [win32],   [],
+[none],    [],
 [""],      [AC_MSG_ERROR(thread model is missing)],
            [AC_MSG_ERROR(unknown thread model $THREAD_MODEL)])
+
+THREAD_IMPL_H=thread_$THREAD_MODEL.h
+AS_IF([test ! -f "$srcdir/$THREAD_IMPL_H"],
+      [AC_MSG_ERROR('$srcdir/$THREAD_IMPL_H' must be exist)])
+THREAD_IMPL_SRC=thread_$THREAD_MODEL.c
+AS_IF([test ! -f "$srcdir/$THREAD_IMPL_SRC"],
+      [AC_MSG_ERROR('$srcdir/$THREAD_IMPL_SRC' must be exist)])
+AC_DEFINE_UNQUOTED(THREAD_IMPL_H, ["$THREAD_IMPL_H"])
+AC_DEFINE_UNQUOTED(THREAD_IMPL_SRC, ["$THREAD_IMPL_SRC"])
 
 AC_ARG_ENABLE(debug-env,
        AS_HELP_STRING([--enable-debug-env], [enable RUBY_DEBUG environment variable]),

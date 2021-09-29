@@ -62,7 +62,11 @@
 #define VM_UNREACHABLE(func) UNREACHABLE
 #endif
 
-#include <setjmp.h>
+#if defined(__wasm__)
+# include <wasm_setjmp.h>
+#else
+# include <setjmp.h>
+#endif
 
 #include "ruby/internal/stdbool.h"
 #include "ccan/list/list.h"
@@ -79,11 +83,7 @@
 #include "vm_opts.h"
 
 #include "ruby/thread_native.h"
-#if   defined(_WIN32)
-#include "thread_win32.h"
-#elif defined(HAVE_PTHREAD_H)
-#include "thread_pthread.h"
-#endif
+#include THREAD_IMPL_H
 
 #define RUBY_VM_THREAD_MODEL 2
 
@@ -807,10 +807,14 @@ enum rb_thread_status {
     THREAD_KILLED
 };
 
+#ifdef __wasi__
+typedef void *rb_jmpbuf_t[5];
+#else
 #ifdef RUBY_JMP_BUF
 typedef RUBY_JMP_BUF rb_jmpbuf_t;
 #else
 typedef void *rb_jmpbuf_t[5];
+#endif
 #endif
 
 /*
