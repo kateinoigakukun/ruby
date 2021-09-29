@@ -22,7 +22,7 @@
 #include <errno.h>
 
 /** @cond INTERNAL_MACRO */
-#if defined(HAVE_POLL)
+#if defined(HAVE_POLL) && !defined(__wasi__)
 #  ifdef _AIX
 #    define reqevents events
 #    define rtnevents revents
