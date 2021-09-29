@@ -30,6 +30,24 @@
 # include <unistd.h>
 #endif
 
+#ifdef __wasi__
+# define WNOHANG 0
+int execl(const char *path, const char *arg, ...) { return 0; }
+int execle(const char *path, const char *arg, ...) { return 0; }
+int execv(const char *path, char *const argv[]) { return 0; }
+int execve(const char *filename, char *const argv[], char *const envp[]) { return 0; }
+int getpid();
+int getppid() { return 0; }
+int system() { return 0; }
+uid_t geteuid(void);
+gid_t getegid(void);
+uid_t getuid(void);
+gid_t getgid(void);
+int dup(int oldfd);
+int dup2(int oldfd, int newfd);
+mode_t umask(mode_t);
+#endif
+
 #ifdef HAVE_FCNTL_H
 # include <fcntl.h>
 #endif
@@ -1063,6 +1081,9 @@ do_waitpid(rb_pid_t pid, int *st, int flags)
     return waitpid(pid, st, flags);
 #elif defined HAVE_WAIT4
     return wait4(pid, st, flags, NULL);
+#elif defined __wasi__
+    // FIXME(katei): nop for waitpid on wasi for now
+    return pid;
 #else
 #  error waitpid or wait4 is required.
 #endif

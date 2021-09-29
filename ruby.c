@@ -66,6 +66,16 @@
 #include "ruby/version.h"
 #include "ruby/internal/error.h"
 
+#ifdef __wasi__
+uid_t geteuid(void);
+gid_t getegid(void);
+uid_t getuid(void);
+gid_t getgid(void);
+int dup(int oldfd) { return 0; }
+int dup2(int oldfd, int newfd) { return 0; }
+int pipe(int pipefd[2]);
+#endif
+
 #ifndef MAXPATHLEN
 # define MAXPATHLEN 1024
 #endif

@@ -30,6 +30,11 @@
 #include "id_table.h"
 #include "ractor_core.h"
 
+#if defined(__wasi__)
+int mprotect() { return 0; }
+int posix_madvise (void *addr, size_t len, int advice) { return 0; }
+#endif
+
 static const int DEBUG = 0;
 
 #define RB_PAGE_SIZE (pagesize)

@@ -28,7 +28,15 @@
 #include <sys/mman.h>
 #endif
 
-#include <setjmp.h>
+#ifdef __wasi__
+int getpid();
+#endif
+
+#if defined(__wasm__)
+# include <wasm_setjmp.h>
+#else
+# include <setjmp.h>
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -5097,6 +5105,10 @@ install_handlers(void)
      * to si_addr from sigaction */
     old_handler = SetUnhandledExceptionFilter(read_barrier_signal);
 }
+#elif defined(__wasi__)
+typedef void *siginfo_t;
+static void uninstall_handlers(void) {}
+static void install_handlers(void) {}
 #else
 static struct sigaction old_sigbus_handler;
 static struct sigaction old_sigsegv_handler;

@@ -37,6 +37,10 @@
 #include "vm_core.h"
 #include "ractor_core.h"
 
+#ifdef __wasi__
+int getpid();
+#endif
+
 #define MAX_POSBUF 128
 
 #define VM_CFP_CNT(ec, cfp) \
