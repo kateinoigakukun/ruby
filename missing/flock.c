@@ -20,6 +20,14 @@
 #  define LOCK_UN 8
 # endif
 
+# ifdef __wasi__
+#  define F_RDLCK 0
+#  define F_WRLCK 0
+#  define F_UNLCK 0
+#  define F_SETLK 0
+#  define F_SETLKW 0
+# endif
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>

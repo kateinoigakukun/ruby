@@ -152,6 +152,21 @@ int flock(int, int);
 # include <stdlib.h>
 #endif
 
+
+#ifdef __wasi__
+// FIXME(katei): disable these uses
+uid_t geteuid(void) { return 0; }
+uid_t getuid(void) { return 0; }
+int getegid(void) { return 0; }
+int getgid(void) { return 0; }
+
+char *getlogin(void) { return NULL; }
+int umask(int mask) { return 0; }
+int chmod(const char *pathname, int mode) { return 0; }
+int chown(const char *pathname, int owner, int group) { return 0; }
+#endif
+
+
 #include "dln.h"
 #include "encindex.h"
 #include "id.h"
