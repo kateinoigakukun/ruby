@@ -45,6 +45,23 @@ void rb_ec_clear_all_trace_func(const rb_execution_context_t *ec);
 static int rb_ec_cleanup(rb_execution_context_t *ec, int ex);
 static int rb_ec_exec_node(rb_execution_context_t *ec, void *n);
 
+enum ruby_tag_type
+rb_try_catch(void (* b_proc) (VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2) {
+    rb_execution_context_t *ec = GET_EC();
+    enum ruby_tag_type state;
+
+    EC_PUSH_TAG(ec);
+    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+        (*b_proc) (data1);
+    }
+    else if (r_proc) {
+        state = (*r_proc) (data2, state);
+    }
+    EC_POP_TAG();
+    return state;
+}
+
 VALUE rb_eLocalJumpError;
 VALUE rb_eSysStackError;
 
@@ -105,25 +122,38 @@ ruby_init(void)
     }
 }
 
+struct ruby_options_context {
+    int argc;
+    char **argv;
+    void *volatile iseq;
+};
+
+static void
+ruby_options_main(VALUE v)
+{
+    struct ruby_options_context *arg = (struct ruby_options_context *) v;
+    arg->iseq = ruby_process_options(arg->argc, arg->argv);
+}
+
+static enum ruby_tag_type
+ruby_options_rescue(VALUE v, enum ruby_tag_type state)
+{
+    struct ruby_options_context *arg = (struct ruby_options_context *) v;
+    rb_execution_context_t *ec = GET_EC();
+    rb_ec_clear_current_thread_trace_func(ec);
+    state = error_handle(ec, state);
+    arg->iseq = (void *)INT2FIX(state);
+    return state;
+}
+
 void *
 ruby_options(int argc, char **argv)
 {
-    rb_execution_context_t *ec = GET_EC();
-    enum ruby_tag_type state;
     void *volatile iseq = 0;
-
     ruby_init_stack((void *)&iseq);
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	SAVE_ROOT_JMPBUF(GET_THREAD(), iseq = ruby_process_options(argc, argv));
-    }
-    else {
-        rb_ec_clear_current_thread_trace_func(ec);
-        state = error_handle(ec, state);
-	iseq = (void *)INT2FIX(state);
-    }
-    EC_POP_TAG();
-    return iseq;
+    struct ruby_options_context arg = { argc, argv, iseq };
+    rb_try_catch(ruby_options_main, (VALUE)&arg, ruby_options_rescue, (VALUE)&arg);
+    return arg.iseq;
 }
 
 static void
