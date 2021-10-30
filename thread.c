@@ -5322,6 +5322,17 @@ exec_recursive_i(RB_BLOCK_CALL_FUNC_ARGLIST(tag, data))
  * list[recursive_key] is used as a flag for the outermost call.
  */
 
+struct exec_recursive_context {
+    VALUE (*func) (VALUE, VALUE, int);
+    VALUE obj;
+    VALUE arg;
+    VALUE ret;
+};
+static void exec_recursive_thunk(VALUE v) {
+    struct exec_recursive_context *ctx = (struct exec_recursive_context *)v;
+    ctx->ret = (*ctx->func)(ctx->obj, ctx->arg, FALSE);
+}
+
 static VALUE
 exec_recursive(VALUE (*func) (VALUE, VALUE, int), VALUE obj, VALUE pairid, VALUE arg, int outer)
 {
@@ -5359,18 +5370,14 @@ exec_recursive(VALUE (*func) (VALUE, VALUE, int), VALUE obj, VALUE pairid, VALUE
 	    }
 	}
 	else {
-	    volatile VALUE ret = Qundef;
+        struct exec_recursive_context ctx = { .func = func, .obj = obj, .arg = arg, .ret = Qundef };
 	    recursive_push(p.list, p.obj, p.pairid);
-	    EC_PUSH_TAG(GET_EC());
-	    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-		ret = (*func)(obj, arg, FALSE);
-	    }
-	    EC_POP_TAG();
+        state = rb_try_catch(GET_EC(), exec_recursive_thunk, (VALUE)&ctx, NULL, Qnil);
 	    if (!recursive_pop(p.list, p.obj, p.pairid)) {
                 goto invalid;
 	    }
 	    if (state != TAG_NONE) EC_JUMP_TAG(GET_EC(), state);
-	    result = ret;
+        result = ctx.ret;
 	}
     }
     *(volatile struct exec_recursive_params *)&p;
