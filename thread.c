@@ -591,12 +591,59 @@ rb_threadptr_unlock_all_locking_mutexes(rb_thread_t *th)
     }
 }
 
+struct rb_thread_terminate_all_context {
+    int sleeping;
+    int retry;
+    rb_thread_t *th;
+};
+
+static void rb_thread_terminate_all_main(VALUE v) {
+    struct rb_thread_terminate_all_context *ctx = (struct rb_thread_terminate_all_context *)v;
+    rb_thread_t *th = ctx->th;
+    rb_ractor_t *cr = th->ractor;
+    rb_execution_context_t * volatile ec = th->ec;
+
+    ctx->retry = 0;
+    thread_debug("rb_thread_terminate_all (main thread: %p)\n", (void *)th);
+    terminate_all(cr, th);
+
+    while (rb_ractor_living_thread_num(cr) > 1)
+    {
+        rb_hrtime_t rel = RB_HRTIME_PER_SEC;
+        /*q
+        * Thread exiting routine in thread_start_func_2 notify
+        * me when the last sub-thread exit.
+        */
+        ctx->sleeping = 1;
+        native_sleep(th, &rel);
+        RUBY_VM_CHECK_INTS_BLOCKING(ec);
+        ctx->sleeping = 0;
+    }
+}
+
+static enum ruby_tag_type rb_thread_terminate_all_rescue(VALUE v, enum ruby_tag_type state) {
+    struct rb_thread_terminate_all_context *ctx = (struct rb_thread_terminate_all_context *)v;
+    /*
+    * When caught an exception (e.g. Ctrl+C), let's broadcast
+    * kill request again to ensure killing all threads even
+    * if they are blocked on sleep, mutex, etc.
+    */
+    if (ctx->sleeping)
+    {
+        ctx->sleeping = 0;
+        ctx->retry = 1;
+    }
+    return state;
+}
+
 void
 rb_thread_terminate_all(rb_thread_t *th)
 {
     rb_ractor_t *cr = th->ractor;
     rb_execution_context_t * volatile ec = th->ec;
-    volatile int sleeping = 0;
+    struct rb_thread_terminate_all_context ctx = {
+        .sleeping = 0, .retry = 0, .th = th,
+    };
 
     if (cr->threads.main != th) {
         rb_bug("rb_thread_terminate_all: called by child thread (%p, %p)",
@@ -606,36 +653,9 @@ rb_thread_terminate_all(rb_thread_t *th)
     /* unlock all locking mutexes */
     rb_threadptr_unlock_all_locking_mutexes(th);
 
-    EC_PUSH_TAG(ec);
-    if (EC_EXEC_TAG() == TAG_NONE) {
-      retry:
-	thread_debug("rb_thread_terminate_all (main thread: %p)\n", (void *)th);
-	terminate_all(cr, th);
-
-	while (rb_ractor_living_thread_num(cr) > 1) {
-            rb_hrtime_t rel = RB_HRTIME_PER_SEC;
-	    /*q
-	     * Thread exiting routine in thread_start_func_2 notify
-	     * me when the last sub-thread exit.
-	     */
-	    sleeping = 1;
-	    native_sleep(th, &rel);
-	    RUBY_VM_CHECK_INTS_BLOCKING(ec);
-	    sleeping = 0;
-	}
-    }
-    else {
-	/*
-	 * When caught an exception (e.g. Ctrl+C), let's broadcast
-	 * kill request again to ensure killing all threads even
-	 * if they are blocked on sleep, mutex, etc.
-	 */
-	if (sleeping) {
-	    sleeping = 0;
-	    goto retry;
-	}
-    }
-    EC_POP_TAG();
+    do {
+        rb_try_catch(ec, rb_thread_terminate_all_main, (VALUE)&ctx, rb_thread_terminate_all_rescue, (VALUE)&ctx);
+    } while (ctx.retry);
 }
 
 void rb_threadptr_root_fiber_terminate(rb_thread_t *th);
