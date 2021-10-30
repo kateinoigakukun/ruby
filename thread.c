@@ -145,6 +145,11 @@ static int consume_communication_pipe(int fd);
 static int check_signals_nogvl(rb_thread_t *, int sigwait_fd);
 void rb_sigwait_fd_migrate(rb_vm_t *); /* process.c */
 
+// FIXME: Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(void (* b_proc) (VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2);
+
 #define eKillSignal INT2FIX(0)
 #define eTerminateSignal INT2FIX(1)
 static volatile int system_working = 1;
@@ -539,7 +544,6 @@ terminate_all(rb_ractor_t *r, const rb_thread_t *main_thread)
 static void
 rb_threadptr_join_list_wakeup(rb_thread_t *thread)
 {
-    enum ruby_tag_type state;
     while (thread->join_list) {
         struct rb_waiting_list *join_list = thread->join_list;
 
@@ -549,11 +553,7 @@ rb_threadptr_join_list_wakeup(rb_thread_t *thread)
         rb_thread_t *target_thread = join_list->thread;
 
         if (target_thread->scheduler != Qnil && rb_fiberptr_blocking(join_list->fiber) == 0) {
-            EC_PUSH_TAG(thread->ec);
-            if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-                rb_fiber_scheduler_unblock(target_thread->scheduler, target_thread->self, rb_fiberptr_self(join_list->fiber));
-            }
-            EC_POP_TAG();
+            rb_fiber_scheduler_unblock(target_thread->scheduler, target_thread->self, rb_fiberptr_self(join_list->fiber));
         }
         else {
             rb_threadptr_interrupt(target_thread);
@@ -568,6 +568,13 @@ rb_threadptr_join_list_wakeup(rb_thread_t *thread)
         }
     }
 }
+
+static void
+rb_threadptr_join_list_wakeup_thunk(VALUE v)
+{
+    rb_threadptr_join_list_wakeup((rb_thread_t *)v);
+}
+
 
 void
 rb_threadptr_unlock_all_locking_mutexes(rb_thread_t *th)
@@ -783,15 +790,73 @@ thread_do_start(rb_thread_t *th)
 
 void rb_ec_clear_current_thread_trace_func(const rb_execution_context_t *ec);
 
+struct thread_start_func_2_context {
+    VALUE *errinfo;
+    rb_thread_t *th;
+};
+
+static void thread_start_func_2_main(VALUE v) {
+    struct thread_start_func_2_context *ctx = (struct thread_start_func_2_context *)v;
+    rb_thread_t *th = ctx->th;
+    thread_do_start(th);
+}
+static enum ruby_tag_type thread_start_func_2_rescue(VALUE v, enum ruby_tag_type state) {
+    struct thread_start_func_2_context *ctx = (struct thread_start_func_2_context *)v;
+    rb_thread_t *th = ctx->th;
+    *ctx->errinfo = th->ec->errinfo;
+
+    if (state == TAG_FATAL)
+    {
+        if (th->invoke_type == thread_invoke_type_ractor_proc)
+        {
+            rb_ractor_atexit(th->ec, Qnil);
+        }
+        /* fatal error within this thread, need to stop whole script */
+    }
+    else if (rb_obj_is_kind_of(*ctx->errinfo, rb_eSystemExit))
+    {
+        /* exit on main_thread. */
+    }
+    else
+    {
+        if (th->report_on_exception)
+        {
+            VALUE mesg = rb_thread_to_s(th->self);
+            rb_str_cat_cstr(mesg, " terminated with exception (report_on_exception is true):\n");
+            rb_write_error_str(mesg);
+            rb_ec_error_print(th->ec, *ctx->errinfo);
+        }
+
+        if (th->invoke_type == thread_invoke_type_ractor_proc)
+        {
+            rb_ractor_atexit_exception(th->ec);
+        }
+
+        if (th->vm->thread_abort_on_exception ||
+            th->abort_on_exception || RTEST(ruby_debug))
+        {
+            /* exit on main_thread */
+        }
+        else
+        {
+            *ctx->errinfo = Qnil;
+        }
+    }
+    th->value = Qnil;
+    return state;
+}
+
 static int
 thread_start_func_2(rb_thread_t *th, VALUE *stack_start)
 {
     STACK_GROW_DIR_DETECTION;
-    enum ruby_tag_type state;
     VALUE errinfo = Qnil;
     size_t size = th->vm->default_params.thread_vm_stack_size / sizeof(VALUE);
     rb_thread_t *ractor_main_th = th->ractor->threads.main;
     VALUE * vm_stack = NULL;
+    struct thread_start_func_2_context ctx = {
+        .th = th, .errinfo = &errinfo,
+    };
 
     VM_ASSERT(th != th->vm->ractor.main_thread);
     thread_debug("thread start: %p\n", (void *)th);
@@ -829,51 +894,16 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start)
     // Ensure that we are not joinable.
     VM_ASSERT(th->value == Qundef);
 
-    EC_PUSH_TAG(th->ec);
-
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        SAVE_ROOT_JMPBUF(th, thread_do_start(th));
-    }
-    else {
-        errinfo = th->ec->errinfo;
-
-        if (state == TAG_FATAL) {
-            if (th->invoke_type == thread_invoke_type_ractor_proc) {
-                rb_ractor_atexit(th->ec, Qnil);
-            }
-            /* fatal error within this thread, need to stop whole script */
-        }
-        else if (rb_obj_is_kind_of(errinfo, rb_eSystemExit)) {
-            /* exit on main_thread. */
-        }
-        else {
-            if (th->report_on_exception) {
-                VALUE mesg = rb_thread_to_s(th->self);
-                rb_str_cat_cstr(mesg, " terminated with exception (report_on_exception is true):\n");
-                rb_write_error_str(mesg);
-                rb_ec_error_print(th->ec, errinfo);
-            }
-
-            if (th->invoke_type == thread_invoke_type_ractor_proc) {
-                rb_ractor_atexit_exception(th->ec);
-            }
-
-            if (th->vm->thread_abort_on_exception ||
-                th->abort_on_exception || RTEST(ruby_debug)) {
-                /* exit on main_thread */
-            }
-            else {
-                errinfo = Qnil;
-            }
-        }
-        th->value = Qnil;
-    }
-    EC_POP_TAG();
+    rb_try_catch(thread_start_func_2_main, (VALUE)&ctx, thread_start_func_2_rescue, (VALUE)&ctx);
 
     // The thread is effectively finished and can be joined.
     VM_ASSERT(th->value != Qundef);
 
-    rb_threadptr_join_list_wakeup(th);
+    enum ruby_tag_type state = TAG_NONE;
+    do {
+        state = rb_try_catch(rb_threadptr_join_list_wakeup_thunk, (VALUE)th, thread_start_func_2_rescue, (VALUE)&ctx);
+    } while (state != TAG_NONE);
+
     rb_threadptr_unlock_all_locking_mutexes(th);
 
     if (th->invoke_type == thread_invoke_type_ractor_proc) {
