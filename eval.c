@@ -219,6 +219,64 @@ ruby_cleanup(int ex)
     return rb_ec_cleanup(GET_EC(), ex);
 }
 
+struct rb_ec_cleanup_context {
+    rb_execution_context_t *ec;
+    rb_thread_t **th;
+    volatile VALUE *errs;
+};
+
+struct rb_ec_cleanup_rescue_context {
+    rb_thread_t **th;
+    rb_thread_t *const volatile th0;
+    volatile int *ex;
+    int step;
+};
+
+static enum ruby_tag_type
+rb_ec_cleanup_rescue(VALUE v, enum ruby_tag_type state)
+{
+    struct rb_ec_cleanup_rescue_context *ctx = (struct rb_ec_cleanup_rescue_context *)v;
+    *(ctx->th) = ctx->th0;
+    if (ctx->step == 2 && *(ctx->ex) == 0) {
+        *(ctx->ex) = state;
+    }
+    return state;
+}
+
+static void
+rb_ec_cleanup_step0_main(VALUE v)
+{
+    rb_execution_context_t *ec = (rb_execution_context_t *)v;
+    RUBY_VM_CHECK_INTS(ec);
+}
+
+static void
+rb_ec_cleanup_step1_main(VALUE v)
+{
+    struct rb_ec_cleanup_context *ctx = (struct rb_ec_cleanup_context *)v;
+    rb_execution_context_t *ec = ctx->ec;
+
+    ctx->errs[1] = ctx->ec->errinfo;
+    if (THROW_DATA_P(ec->errinfo)) {
+        ec->errinfo = Qnil;
+    }
+    ruby_init_stack(&ctx->errs[STACK_UPPER(errs, 0, 1)]);
+
+    rb_ec_teardown(ec);
+}
+
+static void
+rb_ec_cleanup_step2_main(VALUE v)
+{
+    struct rb_ec_cleanup_context *ctx = (struct rb_ec_cleanup_context *)v;
+    rb_execution_context_t *ec = ctx->ec;
+
+    /* protect from Thread#raise */
+    (*ctx->th)->status = THREAD_KILLED;
+    ctx->errs[0] = ec->errinfo;
+    rb_ractor_terminate_all();
+}
+
 static int
 rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
 {
@@ -228,38 +286,26 @@ rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
     rb_thread_t *th = rb_ec_thread_ptr(ec);
     rb_thread_t *const volatile th0 = th;
     volatile int sysex = EXIT_SUCCESS;
-    volatile int step = 0;
     volatile int ex = ex0;
+    struct rb_ec_cleanup_rescue_context rescue_ctx = {
+        .th = &th, .th0 = th0, .step = 0, .ex = &ex,
+    };
+    struct rb_ec_cleanup_context steps_ctx = {
+        .ec = ec, .errs = errs, .th = &th,
+    };
 
     rb_threadptr_interrupt(th);
     rb_threadptr_check_signal(th);
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        SAVE_ROOT_JMPBUF(th, { RUBY_VM_CHECK_INTS(ec); });
+    rb_try_catch(ec, rb_ec_cleanup_step0_main, (VALUE)ec,
+                 rb_ec_cleanup_rescue, (VALUE)&rescue_ctx);
 
-      step_0: step++;
-        errs[1] = ec->errinfo;
-        if (THROW_DATA_P(ec->errinfo)) ec->errinfo = Qnil;
-	ruby_init_stack(&errs[STACK_UPPER(errs, 0, 1)]);
+    rb_try_catch(ec, rb_ec_cleanup_step1_main, (VALUE)&steps_ctx,
+                 rb_ec_cleanup_rescue, (VALUE)&rescue_ctx);
 
-        SAVE_ROOT_JMPBUF(th, rb_ec_teardown(ec));
+    rb_try_catch(ec, rb_ec_cleanup_step2_main, (VALUE)&steps_ctx,
+                 rb_ec_cleanup_rescue, (VALUE)&rescue_ctx);
 
-      step_1: step++;
-	/* protect from Thread#raise */
-	th->status = THREAD_KILLED;
-
-        errs[0] = ec->errinfo;
-	SAVE_ROOT_JMPBUF(th, rb_ractor_terminate_all());
-    }
-    else {
-        th = th0;
-	switch (step) {
-	  case 0: goto step_0;
-	  case 1: goto step_1;
-	}
-	if (ex == 0) ex = state;
-    }
     ec->errinfo = errs[1];
     sysex = error_handle(ec, ex);
 
@@ -298,8 +344,6 @@ rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
 
     /* unlock again if finalizer took mutexes. */
     rb_threadptr_unlock_all_locking_mutexes(th);
-    th = th0;
-    EC_POP_TAG();
     th = th0;
     rb_thread_stop_timer_thread();
     ruby_vm_destruct(th->vm);
