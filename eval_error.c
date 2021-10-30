@@ -357,33 +357,51 @@ rb_error_write(VALUE errinfo, VALUE emesg, VALUE errat, VALUE str, VALUE highlig
     }
 }
 
+struct rb_ec_error_print_context {
+    volatile VALUE *errinfo;
+    volatile VALUE errat;
+    volatile VALUE emesg;
+};
+
+void
+rb_ec_error_print_thunk1(VALUE v)
+{
+    struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
+    ctx->errat = rb_get_backtrace(*ctx->errinfo);
+}
+
+void
+rb_ec_error_print_thunk2(VALUE v)
+{
+    struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
+    ctx->emesg = Qnil;
+    ctx->emesg = rb_get_message(*ctx->errinfo);
+}
+
+void
+rb_ec_error_print_thunk3(VALUE v)
+{
+    struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
+    rb_error_write(*ctx->errinfo, ctx->emesg, ctx->errat, Qnil, Qnil, Qfalse);
+}
+
 void
 rb_ec_error_print(rb_execution_context_t * volatile ec, volatile VALUE errinfo)
 {
     volatile uint8_t raised_flag = ec->raised_flag;
-    volatile VALUE errat = Qundef;
-    volatile VALUE emesg = Qundef;
-    volatile bool written = false;
+
+    struct rb_ec_error_print_context ctx = {
+        .errinfo = &errinfo, .errat = Qundef, .emesg = Qundef,
+    };
 
     if (NIL_P(errinfo))
 	return;
     rb_ec_raised_clear(ec);
 
-    EC_PUSH_TAG(ec);
-    if (EC_EXEC_TAG() == TAG_NONE) {
-	errat = rb_get_backtrace(errinfo);
-    }
-    if (emesg == Qundef) {
-	emesg = Qnil;
-	emesg = rb_get_message(errinfo);
-    }
+    rb_try_catch(ec, rb_ec_error_print_thunk1, (VALUE)&ctx, NULL, Qnil);
+    rb_try_catch(ec, rb_ec_error_print_thunk2, (VALUE)&ctx, NULL, Qnil);
+    rb_try_catch(ec, rb_ec_error_print_thunk3, (VALUE)&ctx, NULL, Qnil);
 
-    if (!written) {
-        written = true;
-        rb_error_write(errinfo, emesg, errat, Qnil, Qnil, Qfalse);
-    }
-
-    EC_POP_TAG();
     ec->errinfo = errinfo;
     rb_ec_raised_set(ec, raised_flag);
 }
