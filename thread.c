@@ -539,6 +539,7 @@ terminate_all(rb_ractor_t *r, const rb_thread_t *main_thread)
 static void
 rb_threadptr_join_list_wakeup(rb_thread_t *thread)
 {
+    enum ruby_tag_type state;
     while (thread->join_list) {
         struct rb_waiting_list *join_list = thread->join_list;
 
@@ -548,7 +549,11 @@ rb_threadptr_join_list_wakeup(rb_thread_t *thread)
         rb_thread_t *target_thread = join_list->thread;
 
         if (target_thread->scheduler != Qnil && rb_fiberptr_blocking(join_list->fiber) == 0) {
-            rb_fiber_scheduler_unblock(target_thread->scheduler, target_thread->self, rb_fiberptr_self(join_list->fiber));
+            EC_PUSH_TAG(thread->ec);
+            if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+                rb_fiber_scheduler_unblock(target_thread->scheduler, target_thread->self, rb_fiberptr_self(join_list->fiber));
+            }
+            EC_POP_TAG();
         }
         else {
             rb_threadptr_interrupt(target_thread);
@@ -863,6 +868,7 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start)
         }
         th->value = Qnil;
     }
+    EC_POP_TAG();
 
     // The thread is effectively finished and can be joined.
     VM_ASSERT(th->value != Qundef);
@@ -887,7 +893,6 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start)
         rb_threadptr_raise(ractor_main_th, 1, &errinfo);
     }
 
-    EC_POP_TAG();
 
     rb_ec_clear_current_thread_trace_func(th->ec);
 
