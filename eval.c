@@ -46,9 +46,9 @@ static int rb_ec_cleanup(rb_execution_context_t *ec, int ex);
 static int rb_ec_exec_node(rb_execution_context_t *ec, void *n);
 
 enum ruby_tag_type
-rb_try_catch(void (* b_proc) (VALUE), VALUE data1,
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (VALUE), VALUE data1,
              enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2) {
-    rb_execution_context_t *ec = GET_EC();
     enum ruby_tag_type state;
 
     EC_PUSH_TAG(ec);
@@ -108,7 +108,7 @@ ruby_setup(void)
     rb_vm_encoded_insn_data_table_init();
     Init_vm_objects();
 
-    state = rb_try_catch(ruby_setup_main, Qnil, NULL, Qnil);
+    state = rb_try_catch(GET_EC(), ruby_setup_main, Qnil, NULL, Qnil);
 
     return state;
 }
@@ -154,7 +154,7 @@ ruby_options(int argc, char **argv)
     void *volatile iseq = 0;
     ruby_init_stack((void *)&iseq);
     struct ruby_options_context arg = { argc, argv, iseq };
-    rb_try_catch(ruby_options_main, (VALUE)&arg, ruby_options_rescue, (VALUE)&arg);
+    rb_try_catch(GET_EC(), ruby_options_main, (VALUE)&arg, ruby_options_rescue, (VALUE)&arg);
     return arg.iseq;
 }
 
@@ -175,7 +175,7 @@ rb_ec_fiber_scheduler_finalize_rescue(VALUE v, enum ruby_tag_type state)
 static void
 rb_ec_fiber_scheduler_finalize(rb_execution_context_t *ec)
 {
-    rb_try_catch(rb_ec_fiber_scheduler_finalize_main, Qnil, rb_ec_fiber_scheduler_finalize_rescue, (VALUE)ec);
+    rb_try_catch(ec, rb_ec_fiber_scheduler_finalize_main, Qnil, rb_ec_fiber_scheduler_finalize_rescue, (VALUE)ec);
 }
 
 static void
@@ -191,7 +191,7 @@ rb_ec_teardown(rb_execution_context_t *ec)
     // If the user code defined a scheduler for the top level thread, run it:
     rb_ec_fiber_scheduler_finalize(ec);
 
-    rb_try_catch(rb_ec_teardown_main, (VALUE)ec, NULL, Qnil);
+    rb_try_catch(ec, rb_ec_teardown_main, (VALUE)ec, NULL, Qnil);
 
     rb_ec_exec_end_proc(ec);
     rb_ec_clear_all_trace_func(ec);

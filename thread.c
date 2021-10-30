@@ -147,7 +147,8 @@ void rb_sigwait_fd_migrate(rb_vm_t *); /* process.c */
 
 // FIXME: Please place it in a suitable file!!!
 enum ruby_tag_type
-rb_try_catch(void (* b_proc) (VALUE), VALUE data1,
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (VALUE), VALUE data1,
              enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2);
 
 #define eKillSignal INT2FIX(0)
@@ -894,14 +895,14 @@ thread_start_func_2(rb_thread_t *th, VALUE *stack_start)
     // Ensure that we are not joinable.
     VM_ASSERT(th->value == Qundef);
 
-    rb_try_catch(thread_start_func_2_main, (VALUE)&ctx, thread_start_func_2_rescue, (VALUE)&ctx);
+    rb_try_catch(th->ec, thread_start_func_2_main, (VALUE)&ctx, thread_start_func_2_rescue, (VALUE)&ctx);
 
     // The thread is effectively finished and can be joined.
     VM_ASSERT(th->value != Qundef);
 
     enum ruby_tag_type state = TAG_NONE;
     do {
-        state = rb_try_catch(rb_threadptr_join_list_wakeup_thunk, (VALUE)th, thread_start_func_2_rescue, (VALUE)&ctx);
+        state = rb_try_catch(th->ec, rb_threadptr_join_list_wakeup_thunk, (VALUE)th, thread_start_func_2_rescue, (VALUE)&ctx);
     } while (state != TAG_NONE);
 
     rb_threadptr_unlock_all_locking_mutexes(th);
