@@ -2307,6 +2307,13 @@ handle_interrupt_arg_check_i(VALUE key, VALUE val, VALUE args)
  * For handling all interrupts, use +Object+ and not +Exception+
  * as the ExceptionClass, as kill/terminate interrupts are not handled by +Exception+.
  */
+static void
+rb_thread_s_handle_interrupt_main(VALUE v)
+{
+    VALUE *result = (VALUE *)v;
+    *result = rb_yield(Qnil);
+}
+
 static VALUE
 rb_thread_s_handle_interrupt(VALUE self, VALUE mask_arg)
 {
@@ -2333,11 +2340,7 @@ rb_thread_s_handle_interrupt(VALUE self, VALUE mask_arg)
 	RUBY_VM_SET_INTERRUPT(th->ec);
     }
 
-    EC_PUSH_TAG(th->ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	r = rb_yield(Qnil);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(th->ec, rb_thread_s_handle_interrupt_main, (VALUE)&r, NULL, Qnil);
 
     rb_ary_pop(th->pending_interrupt_mask_stack);
     if (!rb_threadptr_pending_interrupt_empty_p(th)) {
