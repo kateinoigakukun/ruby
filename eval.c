@@ -159,18 +159,23 @@ ruby_options(int argc, char **argv)
 }
 
 static void
+rb_ec_fiber_scheduler_finalize_main(VALUE v)
+{
+    rb_fiber_scheduler_set(Qnil);
+}
+
+static enum ruby_tag_type
+rb_ec_fiber_scheduler_finalize_rescue(VALUE v, enum ruby_tag_type state)
+{
+    rb_execution_context_t *ec = (rb_execution_context_t *)v;
+    state = error_handle(ec, state);
+    return state;
+}
+
+static void
 rb_ec_fiber_scheduler_finalize(rb_execution_context_t *ec)
 {
-    enum ruby_tag_type state;
-
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        rb_fiber_scheduler_set(Qnil);
-    }
-    else {
-        state = error_handle(ec, state);
-    }
-    EC_POP_TAG();
+    rb_try_catch(rb_ec_fiber_scheduler_finalize_main, Qnil, rb_ec_fiber_scheduler_finalize_rescue, (VALUE)ec);
 }
 
 static void
