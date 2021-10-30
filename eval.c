@@ -78,6 +78,14 @@ extern ID ruby_static_id_cause;
     (!SPECIAL_CONST_P(obj) && \
      (BUILTIN_TYPE(obj) == T_CLASS || BUILTIN_TYPE(obj) == T_MODULE))
 
+static void
+ruby_setup_main(VALUE v)
+{
+    rb_call_inits();
+    ruby_prog_init();
+    GET_VM()->running = 1;
+}
+
 int
 ruby_setup(void)
 {
@@ -100,13 +108,7 @@ ruby_setup(void)
     rb_vm_encoded_insn_data_table_init();
     Init_vm_objects();
 
-    EC_PUSH_TAG(GET_EC());
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	rb_call_inits();
-	ruby_prog_init();
-	GET_VM()->running = 1;
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ruby_setup_main, Qnil, NULL, Qnil);
 
     return state;
 }
