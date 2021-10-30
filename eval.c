@@ -179,16 +179,20 @@ rb_ec_fiber_scheduler_finalize(rb_execution_context_t *ec)
 }
 
 static void
+rb_ec_teardown_main(VALUE v)
+{
+    rb_execution_context_t *ec = (rb_execution_context_t *)v;
+    rb_vm_trap_exit(rb_ec_vm_ptr(ec));
+}
+
+static void
 rb_ec_teardown(rb_execution_context_t *ec)
 {
     // If the user code defined a scheduler for the top level thread, run it:
     rb_ec_fiber_scheduler_finalize(ec);
 
-    EC_PUSH_TAG(ec);
-    if (EC_EXEC_TAG() == TAG_NONE) {
-        rb_vm_trap_exit(rb_ec_vm_ptr(ec));
-    }
-    EC_POP_TAG();
+    rb_try_catch(rb_ec_teardown_main, (VALUE)ec, NULL, Qnil);
+
     rb_ec_exec_end_proc(ec);
     rb_ec_clear_all_trace_func(ec);
 }
