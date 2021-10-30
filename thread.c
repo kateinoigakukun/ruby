@@ -1858,17 +1858,36 @@ rb_thread_call_without_gvl(void *(*func)(void *data), void *data1,
     return rb_nogvl(func, data1, ubf, data2, 0);
 }
 
+struct rb_thread_io_blocking_region_context {
+    struct waiting_fd waiting_fd;
+    rb_blocking_function_t *func;
+    void *data1;
+    VALUE val;
+    int saved_errno;
+};
+
+static void rb_thread_io_blocking_region_main(VALUE v) {
+    struct rb_thread_io_blocking_region_context *ctx = (struct rb_thread_io_blocking_region_context *)v;
+    rb_thread_t *th = ctx->waiting_fd.th;
+    BLOCKING_REGION(th, {
+        ctx->val = ctx->func(ctx->data1);
+        ctx->saved_errno = errno;
+    }, ubf_select, th, FALSE);
+}
+
 VALUE
 rb_thread_io_blocking_region(rb_blocking_function_t *func, void *data1, int fd)
 {
-    volatile VALUE val = Qundef; /* shouldn't be used */
     rb_execution_context_t * volatile ec = GET_EC();
-    volatile int saved_errno = 0;
     enum ruby_tag_type state;
 
     struct waiting_fd waiting_fd = {
         .fd = fd,
         .th = rb_ec_thread_ptr(ec)
+    };
+    struct rb_thread_io_blocking_region_context ctx = {
+        .waiting_fd = waiting_fd, .func = func, .data1 = data1,
+        .val = Qundef, .saved_errno = 0,
     };
 
     RB_VM_LOCK_ENTER();
@@ -1877,14 +1896,7 @@ rb_thread_io_blocking_region(rb_blocking_function_t *func, void *data1, int fd)
     }
     RB_VM_LOCK_LEAVE();
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        BLOCKING_REGION(waiting_fd.th, {
-            val = func(data1);
-            saved_errno = errno;
-        }, ubf_select, waiting_fd.th, FALSE);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, rb_thread_io_blocking_region_main, (VALUE)&ctx, NULL, Qnil);
 
     /*
      * must be deleted before jump
@@ -1902,9 +1914,9 @@ rb_thread_io_blocking_region(rb_blocking_function_t *func, void *data1, int fd)
     /* TODO: check func() */
     RUBY_VM_CHECK_INTS_BLOCKING(ec);
 
-    errno = saved_errno;
+    errno = ctx.saved_errno;
 
-    return val;
+    return ctx.val;
 }
 
 /*
