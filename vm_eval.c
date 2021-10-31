@@ -1490,58 +1490,95 @@ static const char *
 vm_frametype_name(const rb_control_frame_t *cfp);
 #endif
 
+struct rb_iterate0_context {
+    VALUE (* it_proc) (VALUE);
+    VALUE data1;
+    volatile VALUE retval;
+    const struct vm_ifunc *const ifunc;
+    rb_control_frame_t *const cfp;
+    bool iter_retry;
+};
+
+
+static void
+rb_iterate0_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_iterate0_context *ctx = (struct rb_iterate0_context *)v;
+    rb_control_frame_t *const cfp = ctx->cfp;
+    {
+        VALUE block_handler;
+
+        if (ctx->ifunc) {
+            struct rb_captured_block *captured = VM_CFP_TO_CAPTURED_BLOCK(cfp);
+            captured->code.ifunc = ctx->ifunc;
+            block_handler = VM_BH_FROM_IFUNC_BLOCK(captured);
+        }
+        else {
+            block_handler = VM_CF_BLOCK_HANDLER(cfp);
+        }
+        vm_passed_block_handler_set(ec, block_handler);
+    }
+    ctx->retval = (*ctx->it_proc) (ctx->data1);
+}
+
+static enum ruby_tag_type
+rb_iterate0_rescue(rb_execution_context_t *ec, VALUE v, enum ruby_tag_type state)
+{
+    struct rb_iterate0_context *ctx = (struct rb_iterate0_context *)v;
+    rb_control_frame_t *const cfp = ctx->cfp;
+    if (state == TAG_BREAK || state == TAG_RETRY) {
+        const struct vm_throw_data *const err = (struct vm_throw_data *)ec->errinfo;
+        const rb_control_frame_t *const escape_cfp = THROW_DATA_CATCH_FRAME(err);
+
+        if (cfp == escape_cfp) {
+            rb_vm_rewind_cfp(ec, cfp);
+
+            state = 0;
+            ec->tag->state = TAG_NONE;
+            ec->errinfo = Qnil;
+
+            if (state == TAG_RETRY) {
+                ctx->iter_retry = true;
+                return state;
+            }
+            ctx->retval = THROW_DATA_VAL(err);
+        }
+        else if (0) {
+            SDR(); fprintf(stderr, "%p, %p\n", (void *)cfp, (void *)escape_cfp);
+        }
+    }
+    return state;
+}
+
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
+
 static VALUE
 rb_iterate0(VALUE (* it_proc) (VALUE), VALUE data1,
 	    const struct vm_ifunc *const ifunc,
 	    rb_execution_context_t *ec)
 {
     enum ruby_tag_type state;
-    volatile VALUE retval = Qnil;
-    rb_control_frame_t *const cfp = ec->cfp;
 
-    EC_PUSH_TAG(ec);
-    state = EC_EXEC_TAG();
-    if (state == 0) {
-      iter_retry:
-	{
-	    VALUE block_handler;
+    struct rb_iterate0_context ctx = {
+        .it_proc = it_proc, .data1 = data1, .retval = Qnil,
+        .cfp = ec->cfp,
+        .ifunc = ifunc, .iter_retry = false,
+    };
 
-	    if (ifunc) {
-		struct rb_captured_block *captured = VM_CFP_TO_CAPTURED_BLOCK(cfp);
-		captured->code.ifunc = ifunc;
-		block_handler = VM_BH_FROM_IFUNC_BLOCK(captured);
-	    }
-	    else {
-		block_handler = VM_CF_BLOCK_HANDLER(cfp);
-	    }
-	    vm_passed_block_handler_set(ec, block_handler);
-	}
-	retval = (*it_proc) (data1);
-    }
-    else if (state == TAG_BREAK || state == TAG_RETRY) {
-	const struct vm_throw_data *const err = (struct vm_throw_data *)ec->errinfo;
-	const rb_control_frame_t *const escape_cfp = THROW_DATA_CATCH_FRAME(err);
-
-	if (cfp == escape_cfp) {
-	    rb_vm_rewind_cfp(ec, cfp);
-
-	    state = 0;
-	    ec->tag->state = TAG_NONE;
-	    ec->errinfo = Qnil;
-
-	    if (state == TAG_RETRY) goto iter_retry;
-	    retval = THROW_DATA_VAL(err);
-	}
-	else if (0) {
-	    SDR(); fprintf(stderr, "%p, %p\n", (void *)cfp, (void *)escape_cfp);
-	}
-    }
-    EC_POP_TAG();
+    do {
+        ctx.iter_retry = false;
+        state = rb_try_catch(ec, rb_iterate0_main, (VALUE)&ctx, rb_iterate0_rescue, (VALUE)&ctx);
+    } while (ctx.iter_retry);
 
     if (state) {
 	EC_JUMP_TAG(ec, state);
     }
-    return retval;
+    return ctx.retval;
 }
 
 static VALUE
