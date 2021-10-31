@@ -656,6 +656,12 @@ load_iseq_eval(rb_execution_context_t *ec, VALUE fname)
     rb_iseq_eval(iseq);
 }
 
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
 static inline enum ruby_tag_type
 load_wrapping(rb_execution_context_t *ec, VALUE fname)
 {
@@ -674,12 +680,7 @@ load_wrapping(rb_execution_context_t *ec, VALUE fname)
     th->top_wrapper = rb_module_new();
     rb_extend_object(th->top_self, th->top_wrapper);
 
-    EC_PUSH_TAG(ec);
-    state = EC_EXEC_TAG();
-    if (state == TAG_NONE) {
-        load_iseq_eval(ec, fname);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, load_iseq_eval, fname, NULL, Qnil);
 
 #if !defined __GNUC__
     th = th0;
