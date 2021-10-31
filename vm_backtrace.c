@@ -1368,6 +1368,26 @@ collect_caller_bindings(const rb_execution_context_t *ec)
     return result;
 }
 
+struct rb_debug_inspector_open_context {
+    rb_debug_inspector_func_t func;
+    rb_debug_inspector_t *dbg_context;
+    volatile VALUE *result;
+    void *data;
+};
+
+static void
+rb_debug_inspector_open_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_debug_inspector_open_context *ctx = (struct rb_debug_inspector_open_context *)v;
+    *ctx->result = (*ctx->func)(ctx->dbg_context, ctx->data);
+}
+
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
 /*
  * Note that the passed `rb_debug_inspector_t' will be disabled
  * after `rb_debug_inspector_open'.
@@ -1380,6 +1400,10 @@ rb_debug_inspector_open(rb_debug_inspector_func_t func, void *data)
     rb_execution_context_t *ec = GET_EC();
     enum ruby_tag_type state;
     volatile VALUE MAYBE_UNUSED(result);
+    struct rb_debug_inspector_open_context ctx = {
+        .result = &result, .func = func, .data = data,
+        .dbg_context = &dbg_context,
+    };
 
     /* escape all env to heap */
     rb_vm_stack_to_heap(ec);
@@ -1390,11 +1414,7 @@ rb_debug_inspector_open(rb_debug_inspector_func_t func, void *data)
     dbg_context.backtrace_size = RARRAY_LEN(dbg_context.backtrace);
     dbg_context.contexts = collect_caller_bindings(ec);
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	result = (*func)(&dbg_context, data);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, rb_debug_inspector_open_main, (VALUE)&ctx, NULL, Qnil);
 
     /* invalidate bindings? */
 
