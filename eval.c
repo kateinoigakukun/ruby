@@ -623,6 +623,32 @@ exc_setup_message(const rb_execution_context_t *ec, VALUE mesg, VALUE *cause)
     return mesg;
 }
 
+struct setup_exception_context {
+    volatile VALUE *mesg;
+    VALUE *cause;
+    rb_execution_context_t *ec;
+};
+
+static void setup_exception_main(VALUE v) {
+    struct setup_exception_context *ctx = (struct setup_exception_context *)v;
+
+    VALUE bt = rb_get_backtrace(*ctx->mesg);
+    if (!NIL_P(bt) || *ctx->cause == Qundef) {
+        if (OBJ_FROZEN(*ctx->mesg)) {
+            *ctx->mesg = rb_obj_dup(*ctx->mesg);
+        }
+    }
+    if (*ctx->cause != Qundef && !THROW_DATA_P(*ctx->cause)) {
+        exc_setup_cause(*ctx->mesg, *ctx->cause);
+    }
+    if (NIL_P(bt)) {
+        VALUE at = rb_ec_backtrace_object(ctx->ec);
+        rb_ivar_set(*ctx->mesg, idBt_locations, at);
+        set_backtrace(*ctx->mesg, at);
+    }
+    rb_ec_reset_raised(ctx->ec);
+}
+
 static void
 setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE cause)
 {
@@ -632,33 +658,22 @@ setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE 
     const char *const volatile file0 = file;
 
     if ((file && !NIL_P(mesg)) || (cause != Qundef))  {
-	volatile int state = 0;
+        volatile int state = 0;
+        struct setup_exception_context ctx = {
+            .mesg = &mesg, .cause = &cause, .ec = ec,
+        };
 
-	EC_PUSH_TAG(ec);
-	if (EC_EXEC_TAG() == TAG_NONE && !(state = rb_ec_set_raised(ec))) {
-	    VALUE bt = rb_get_backtrace(mesg);
-	    if (!NIL_P(bt) || cause == Qundef) {
-		if (OBJ_FROZEN(mesg)) {
-		    mesg = rb_obj_dup(mesg);
-		}
-	    }
-            if (cause != Qundef && !THROW_DATA_P(cause)) {
-		exc_setup_cause(mesg, cause);
-	    }
-	    if (NIL_P(bt)) {
-		VALUE at = rb_ec_backtrace_object(ec);
-		rb_ivar_set(mesg, idBt_locations, at);
-		set_backtrace(mesg, at);
-	    }
-	    rb_ec_reset_raised(ec);
-	}
-	EC_POP_TAG();
+        state = rb_ec_set_raised(ec);
+        if (!state) {
+            rb_try_catch(ec, setup_exception_main, (VALUE)&ctx, NULL, Qnil);
+        }
+
         file = file0;
-	if (state) goto fatal;
+        if (state) goto fatal;
     }
 
     if (!NIL_P(mesg)) {
-	ec->errinfo = mesg;
+        ec->errinfo = mesg;
     }
 
     if (RTEST(ruby_debug) && !NIL_P(e = ec->errinfo) &&
