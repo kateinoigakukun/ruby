@@ -3996,41 +3996,49 @@ warn_exception_in_finalizer(rb_execution_context_t *ec, VALUE final)
     }
 }
 
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2);
+
+struct run_finalizer_context {
+    VALUE errinfo;
+    VALUE objid;
+    VALUE final;
+    VALUE table;
+    rb_control_frame_t *cfp;
+    rb_execution_context_t * volatile ec;
+    long finished;
+    long i;
+};
+
+static void run_finalizer_main(VALUE v) {
+    struct run_finalizer_context *ctx = (struct run_finalizer_context *)v;
+    run_single_final(ctx->final = RARRAY_AREF(ctx->table, ctx->i), ctx->objid);
+}
+
+static enum ruby_tag_type run_finalizer_rescue(VALUE v, enum ruby_tag_type state) {
+    struct run_finalizer_context *ctx = (struct run_finalizer_context *)v;
+    warn_exception_in_finalizer(ctx->ec, ATOMIC_VALUE_EXCHANGE(ctx->final, Qundef));
+    return state;
+}
+
 static void
 run_finalizer(rb_objspace_t *objspace, VALUE obj, VALUE table)
 {
-    long i;
-    enum ruby_tag_type state;
-    volatile struct {
-	VALUE errinfo;
-	VALUE objid;
-	VALUE final;
-	rb_control_frame_t *cfp;
-	long finished;
-    } saved;
     rb_execution_context_t * volatile ec = GET_EC();
+    struct run_finalizer_context ctx = {
+        .errinfo = ec->errinfo, .objid = rb_obj_id(obj), .cfp = ec->cfp,
+        .ec = ec, .finished = 0, .final = Qundef, .i = 0, .table = table,
+    };
 #define RESTORE_FINALIZER() (\
-	ec->cfp = saved.cfp, \
-	ec->errinfo = saved.errinfo)
+	ec->cfp = ctx.cfp, \
+	ec->errinfo = ctx.errinfo)
 
-    saved.errinfo = ec->errinfo;
-    saved.objid = rb_obj_id(obj);
-    saved.cfp = ec->cfp;
-    saved.finished = 0;
-    saved.final = Qundef;
-
-    EC_PUSH_TAG(ec);
-    state = EC_EXEC_TAG();
-    if (state != TAG_NONE) {
-	++saved.finished;	/* skip failed finalizer */
-	warn_exception_in_finalizer(ec, ATOMIC_VALUE_EXCHANGE(saved.final, Qundef));
+    for (ctx.i = 0; RESTORE_FINALIZER(), ctx.i < RARRAY_LEN(table); ctx.i++) {
+        rb_try_catch(ec, run_finalizer_main, (VALUE)&ctx, run_finalizer_rescue, (VALUE)&ctx);
     }
-    for (i = saved.finished;
-	 RESTORE_FINALIZER(), i<RARRAY_LEN(table);
-	 saved.finished = ++i) {
-	run_single_final(saved.final = RARRAY_AREF(table, i), saved.objid);
-    }
-    EC_POP_TAG();
 #undef RESTORE_FINALIZER
 }
 
