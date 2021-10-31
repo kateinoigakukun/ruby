@@ -253,7 +253,7 @@ rb_ec_cleanup_step1_main(rb_execution_context_t *ec, VALUE v)
     if (THROW_DATA_P(ec->errinfo)) {
         ec->errinfo = Qnil;
     }
-    ruby_init_stack(&ctx->errs[STACK_UPPER(errs, 0, 1)]);
+    ruby_init_stack(&ctx->errs[STACK_UPPER(ctx->errs, 0, 1)]);
 
     rb_ec_teardown(ec);
 }
