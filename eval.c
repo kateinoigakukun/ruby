@@ -626,10 +626,13 @@ exc_setup_message(const rb_execution_context_t *ec, VALUE mesg, VALUE *cause)
 struct setup_exception_context {
     volatile VALUE *mesg;
     VALUE *cause;
+    VALUE e;
     rb_execution_context_t *ec;
+    const char *file;
+    int line;
 };
 
-static void setup_exception_main(VALUE v) {
+static void setup_exception_thunk1(VALUE v) {
     struct setup_exception_context *ctx = (struct setup_exception_context *)v;
 
     VALUE bt = rb_get_backtrace(*ctx->mesg);
@@ -648,27 +651,44 @@ static void setup_exception_main(VALUE v) {
     }
     rb_ec_reset_raised(ctx->ec);
 }
+static void setup_exception_thunk2(VALUE v) {
+    struct setup_exception_context *ctx = (struct setup_exception_context *)v;
+
+    ctx->ec->errinfo = Qnil;
+    ctx->e = rb_obj_as_string(*ctx->mesg);
+    ctx->ec->errinfo = *ctx->mesg;
+    if (ctx->file && ctx->line) {
+        ctx->e = rb_sprintf("Exception `%" PRIsVALUE "' at %s:%d - %" PRIsVALUE "\n",
+                       rb_obj_class(*ctx->mesg), ctx->file, ctx->line, ctx->e);
+    }
+    else if (ctx->file) {
+        ctx->e = rb_sprintf("Exception `%" PRIsVALUE "' at %s - %" PRIsVALUE "\n",
+                       rb_obj_class(*ctx->mesg), ctx->file, ctx->e);
+    }
+    else {
+        ctx->e = rb_sprintf("Exception `%" PRIsVALUE "' - %" PRIsVALUE "\n",
+                       rb_obj_class(*ctx->mesg), ctx->e);
+    }
+    warn_print_str(ctx->e);
+}
 
 static void
 setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE cause)
 {
-    VALUE e;
-    int line;
-    const char *file = rb_source_location_cstr(&line);
-    const char *const volatile file0 = file;
+    struct setup_exception_context ctx = {
+        .mesg = &mesg, .cause = &cause, .ec = ec, .file = rb_source_location_cstr(NULL), .line = 0,
+    };
+    const char *const volatile file0 = ctx.file;
 
-    if ((file && !NIL_P(mesg)) || (cause != Qundef))  {
+    if ((ctx.file && !NIL_P(mesg)) || (cause != Qundef))  {
         volatile int state = 0;
-        struct setup_exception_context ctx = {
-            .mesg = &mesg, .cause = &cause, .ec = ec,
-        };
 
         state = rb_ec_set_raised(ec);
         if (!state) {
-            rb_try_catch(ec, setup_exception_main, (VALUE)&ctx, NULL, Qnil);
+            rb_try_catch(ec, setup_exception_thunk1, (VALUE)&ctx, NULL, Qnil);
         }
 
-        file = file0;
+        ctx.file = file0;
         if (state) goto fatal;
     }
 
@@ -676,38 +696,20 @@ setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE 
         ec->errinfo = mesg;
     }
 
-    if (RTEST(ruby_debug) && !NIL_P(e = ec->errinfo) &&
-	!rb_obj_is_kind_of(e, rb_eSystemExit)) {
-	enum ruby_tag_type state;
+    if (RTEST(ruby_debug) && !NIL_P(ctx.e = ec->errinfo) &&
+        !rb_obj_is_kind_of(ctx.e, rb_eSystemExit)) {
+        enum ruby_tag_type state = TAG_NONE;
 
-	mesg = e;
-	EC_PUSH_TAG(ec);
-	if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	    ec->errinfo = Qnil;
-	    e = rb_obj_as_string(mesg);
-	    ec->errinfo = mesg;
-	    if (file && line) {
-		e = rb_sprintf("Exception `%"PRIsVALUE"' at %s:%d - %"PRIsVALUE"\n",
-			       rb_obj_class(mesg), file, line, e);
-	    }
-	    else if (file) {
-		e = rb_sprintf("Exception `%"PRIsVALUE"' at %s - %"PRIsVALUE"\n",
-			       rb_obj_class(mesg), file, e);
-	    }
-	    else {
-		e = rb_sprintf("Exception `%"PRIsVALUE"' - %"PRIsVALUE"\n",
-			       rb_obj_class(mesg), e);
-	    }
-	    warn_print_str(e);
-	}
-	EC_POP_TAG();
-	if (state == TAG_FATAL && ec->errinfo == exception_error) {
-	    ec->errinfo = mesg;
-	}
-	else if (state) {
-	    rb_ec_reset_raised(ec);
-	    EC_JUMP_TAG(ec, state);
-	}
+        state = rb_try_catch(ec, setup_exception_thunk2, (VALUE)&ctx, NULL, Qnil);
+
+        mesg = ctx.e;
+        if (state == TAG_FATAL && ec->errinfo == exception_error) {
+            ec->errinfo = mesg;
+        }
+        else if (state) {
+            rb_ec_reset_raised(ec);
+            EC_JUMP_TAG(ec, state);
+        }
     }
 
     if (rb_ec_set_raised(ec)) {
@@ -715,8 +717,8 @@ setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE 
     }
 
     if (tag != TAG_FATAL) {
-	RUBY_DTRACE_HOOK(RAISE, rb_obj_classname(ec->errinfo));
-	EXEC_EVENT_HOOK(ec, RUBY_EVENT_RAISE, ec->cfp->self, 0, 0, 0, mesg);
+        RUBY_DTRACE_HOOK(RAISE, rb_obj_classname(ec->errinfo));
+        EXEC_EVENT_HOOK(ec, RUBY_EVENT_RAISE, ec->cfp->self, 0, 0, 0, mesg);
     }
     return;
 
