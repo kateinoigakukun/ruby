@@ -340,11 +340,33 @@ exec_hooks_unprotected(const rb_execution_context_t *ec, rb_hook_list_t *list, c
     exec_hooks_postcheck(ec, list);
 }
 
+struct exec_hooks_protected_context {
+    rb_hook_list_t *list;
+    const rb_trace_arg_t *trace_arg;
+};
+
+static void
+exec_hooks_protected_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct exec_hooks_protected_context *ctx = (struct exec_hooks_protected_context *)v;
+    exec_hooks_body(ec, ctx->list, ctx->trace_arg);
+}
+
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
+
 static int
 exec_hooks_protected(rb_execution_context_t *ec, rb_hook_list_t *list, const rb_trace_arg_t *trace_arg)
 {
     enum ruby_tag_type state;
     volatile int raised;
+    struct exec_hooks_protected_context ctx = {
+        .list = list, .trace_arg = trace_arg,
+    };
 
     if (exec_hooks_precheck(ec, list, trace_arg) == 0) return 0;
 
@@ -352,11 +374,7 @@ exec_hooks_protected(rb_execution_context_t *ec, rb_hook_list_t *list, const rb_
 
     /* TODO: Support !RUBY_EVENT_HOOK_FLAG_SAFE hooks */
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	exec_hooks_body(ec, list, trace_arg);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, exec_hooks_protected_main, (VALUE)&ctx, NULL, Qnil);
 
     exec_hooks_postcheck(ec, list);
 
