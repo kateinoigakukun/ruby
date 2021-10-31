@@ -438,12 +438,27 @@ rb_exec_event_hooks(rb_trace_arg_t *trace_arg, rb_hook_list_t *hooks, int pop_p)
     }
 }
 
+struct rb_suppress_tracing_context {
+    VALUE (*func)(VALUE);
+    VALUE arg;
+    volatile VALUE result;
+};
+
+static void
+rb_suppress_tracing_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_suppress_tracing_context *ctx = (struct rb_suppress_tracing_context *)v;
+    ctx->result = (*ctx->func)(ctx->arg);
+}
+
 VALUE
 rb_suppress_tracing(VALUE (*func)(VALUE), VALUE arg)
 {
     volatile int raised;
-    volatile VALUE result = Qnil;
     rb_execution_context_t *const ec = GET_EC();
+    struct rb_suppress_tracing_context ctx = {
+        .func = func, .arg = arg, .result = Qnil,
+    };
     rb_vm_t *const vm = rb_ec_vm_ptr(ec);
     enum ruby_tag_type state;
     rb_trace_arg_t dummy_trace_arg;
@@ -455,14 +470,11 @@ rb_suppress_tracing(VALUE (*func)(VALUE), VALUE arg)
 
     raised = rb_ec_reset_raised(ec);
 
-    EC_PUSH_TAG(ec);
-    if (LIKELY((state = EC_EXEC_TAG()) == TAG_NONE)) {
-	result = (*func)(arg);
-    }
-    else {
-	(void)*&vm; /* suppress "clobbered" warning */
-    }
-    EC_POP_TAG();
+    // FIXME(katei): The original 'if' condition uses LIKELY macro but rb_try_catch
+    // doesn't. Should we keep the use of the macro?
+    // ORIGINAL: `if (LIKELY((state = EC_EXEC_TAG()) == TAG_NONE))`
+    state = rb_try_catch(ec, rb_suppress_tracing_main, (VALUE)&ctx, NULL, Qnil);
+    (void)*&vm; /* suppress "clobbered" warning */
 
     if (raised) {
 	rb_ec_reset_raised(ec);
@@ -474,12 +486,12 @@ rb_suppress_tracing(VALUE (*func)(VALUE), VALUE arg)
 
     if (state) {
 #if defined RUBY_USE_SETJMPEX && RUBY_USE_SETJMPEX
-	RB_GC_GUARD(result);
+	RB_GC_GUARD(ctx.result);
 #endif
 	EC_JUMP_TAG(ec, state);
     }
 
-    return result;
+    return ctx.result;
 }
 
 static void call_trace_func(rb_event_flag_t, VALUE data, VALUE self, ID id, VALUE klass);
