@@ -1674,6 +1674,33 @@ rb_workqueue_register(unsigned flags, rb_postponed_job_func_t func, void *data)
     return TRUE;
 }
 
+struct rb_postponed_job_flush_context {
+    rb_vm_t *vm;
+    struct list_head *tmp;
+};
+
+static void
+rb_postponed_job_flush_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_postponed_job_flush_context *ctx = (struct rb_postponed_job_flush_context *)v;
+    rb_vm_t *vm = ctx->vm;
+    rb_atomic_t index;
+    struct rb_workqueue_job *wq_job;
+
+    while ((index = vm->postponed_job_index) > 0) {
+        if (ATOMIC_CAS(vm->postponed_job_index, index, index-1) == index) {
+            rb_postponed_job_t *pjob = &vm->postponed_job_buffer[index-1];
+            (*pjob->func)(pjob->data);
+        }
+    }
+    while ((wq_job = list_pop(ctx->tmp, struct rb_workqueue_job, jnode))) {
+        rb_postponed_job_t pjob = wq_job->job;
+
+        free(wq_job);
+        (pjob.func)(pjob.data);
+    }
+}
+
 void
 rb_postponed_job_flush(rb_vm_t *vm)
 {
@@ -1682,6 +1709,9 @@ rb_postponed_job_flush(rb_vm_t *vm)
     volatile rb_atomic_t saved_mask = ec->interrupt_mask & block_mask;
     VALUE volatile saved_errno = ec->errinfo;
     struct list_head tmp;
+    struct rb_postponed_job_flush_context ctx = {
+        .vm = vm, .tmp = &tmp,
+    };
 
     list_head_init(&tmp);
 
@@ -1692,27 +1722,9 @@ rb_postponed_job_flush(rb_vm_t *vm)
     ec->errinfo = Qnil;
     /* mask POSTPONED_JOB dispatch */
     ec->interrupt_mask |= block_mask;
-    {
-	EC_PUSH_TAG(ec);
-	if (EC_EXEC_TAG() == TAG_NONE) {
-            rb_atomic_t index;
-            struct rb_workqueue_job *wq_job;
 
-            while ((index = vm->postponed_job_index) > 0) {
-                if (ATOMIC_CAS(vm->postponed_job_index, index, index-1) == index) {
-                    rb_postponed_job_t *pjob = &vm->postponed_job_buffer[index-1];
-                    (*pjob->func)(pjob->data);
-                }
-	    }
-            while ((wq_job = list_pop(&tmp, struct rb_workqueue_job, jnode))) {
-                rb_postponed_job_t pjob = wq_job->job;
+    rb_try_catch(ec, rb_postponed_job_flush_main, (VALUE)&ctx, NULL, Qnil);
 
-                free(wq_job);
-                (pjob.func)(pjob.data);
-            }
-	}
-	EC_POP_TAG();
-    }
     /* restore POSTPONED_JOB mask */
     ec->interrupt_mask &= ~(saved_mask ^ block_mask);
     ec->errinfo = saved_errno;
