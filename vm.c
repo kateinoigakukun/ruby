@@ -2142,41 +2142,82 @@ hook_before_rewind(rb_execution_context_t *ec, const rb_control_frame_t *cfp,
   be FALSE to avoid calling `mjit_exec` twice.
  */
 
+struct rb_vm_exec_context {
+    VALUE initial;
+    VALUE result;
+    enum ruby_tag_type state;
+    bool mjit_enable_p;
+};
+
 static inline VALUE
 vm_exec_handle_exception(rb_execution_context_t *ec, enum ruby_tag_type state,
                          VALUE errinfo, VALUE *initial);
 
+static void
+vm_exec_enter_vm_loop(rb_execution_context_t * ec, struct rb_vm_exec_context *ctx,
+                      struct rb_vm_tag *_tag, bool skip_first_ex_handle) {
+    if (skip_first_ex_handle) {
+        goto vm_loop_start;
+    }
+
+    ctx->result = ec->errinfo;
+    rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
+    while ((ctx->result = vm_exec_handle_exception(ec, ctx->state, ctx->result, &ctx->initial)) == Qundef) {
+        /* caught a jump, exec the handler */
+        ctx->result = vm_exec_core(ec, ctx->initial);
+    vm_loop_start:
+        VM_ASSERT(ec->tag == _tag);
+        /* when caught `throw`, `tag.state` is set. */
+        if ((ctx->state = _tag->state) == TAG_NONE) break;
+        _tag->state = TAG_NONE;
+    }
+}
+
+// FIXME(katei): workaround to insert `_tag.retval = Qnil;` and pass `_tag`
+// NOTE that r_proc may throw exception. This adds some complexity in WebAssembly's try-catch.
+static enum ruby_tag_type
+rb_try_catch3(rb_execution_context_t *ec,
+              void (* b_proc) (rb_execution_context_t *, struct rb_vm_tag *, VALUE), VALUE data1,
+              void (* r_proc) (rb_execution_context_t *, struct rb_vm_tag *, VALUE, enum ruby_tag_type), VALUE data2) {
+    enum ruby_tag_type state;
+
+    EC_PUSH_TAG(ec);
+    _tag.retval = Qnil;
+    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+        b_proc(ec, &_tag, data1);
+    } else {
+        r_proc(ec, &_tag, data2, state);
+    }
+    EC_POP_TAG();
+    return state;
+}
+
+static void vm_exec_main(rb_execution_context_t *ec, struct rb_vm_tag *_tag, VALUE v)
+{
+    struct rb_vm_exec_context *ctx = (struct rb_vm_exec_context *)v;
+    ctx->state = TAG_NONE;
+    if (!ctx->mjit_enable_p || (ctx->result = mjit_exec(ec)) == Qundef) {
+        ctx->result = vm_exec_core(ec, ctx->initial);
+    }
+    vm_exec_enter_vm_loop(ec, ctx, _tag, true);
+}
+static void
+vm_exec_rescue(rb_execution_context_t * ec, struct rb_vm_tag *_tag, VALUE v, enum ruby_tag_type state)
+{
+    struct rb_vm_exec_context *ctx = (struct rb_vm_exec_context *)v;
+    ctx->state = state;
+    vm_exec_enter_vm_loop(ec, ctx, _tag, false);
+}
+
 VALUE
 vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
 {
-    enum ruby_tag_type state;
-    VALUE result = Qundef;
-    VALUE initial = 0;
-
-    EC_PUSH_TAG(ec);
-
-    _tag.retval = Qnil;
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        if (!mjit_enable_p || (result = mjit_exec(ec)) == Qundef) {
-            result = vm_exec_core(ec, initial);
-        }
-        goto vm_loop_start; /* fallback to the VM */
-    }
-    else {
-	result = ec->errinfo;
-        rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
-        while ((result = vm_exec_handle_exception(ec, state, result, &initial)) == Qundef) {
-            /* caught a jump, exec the handler */
-            result = vm_exec_core(ec, initial);
-	  vm_loop_start:
-	    VM_ASSERT(ec->tag == &_tag);
-	    /* when caught `throw`, `tag.state` is set. */
-	    if ((state = _tag.state) == TAG_NONE) break;
-	    _tag.state = TAG_NONE;
-	}
-    }
-    EC_POP_TAG();
-    return result;
+    struct rb_vm_exec_context ctx = {
+        .initial = 0, .result = Qundef,
+        .mjit_enable_p = mjit_enable_p,
+    };
+    rb_try_catch3(ec, vm_exec_main, (VALUE)&ctx, vm_exec_rescue, (VALUE)&ctx);
+    return ctx.result;
 }
 
 static inline VALUE
