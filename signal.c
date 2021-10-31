@@ -1041,12 +1041,33 @@ sig_do_nothing(int sig)
 }
 #endif
 
+struct signal_exec_context {
+    VALUE cmd;
+    int sig;
+};
+
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
+static void signal_exec_main(rb_execution_context_t * ec, VALUE v)
+{
+    struct signal_exec_context *ctx = (struct signal_exec_context *)v;
+    VALUE signum = INT2NUM(ctx->sig);
+    rb_eval_cmd_kw(ctx->cmd, rb_ary_new3(1, signum), RB_NO_KEYWORDS);
+}
+
 static int
 signal_exec(VALUE cmd, int sig)
 {
     rb_execution_context_t *ec = GET_EC();
     volatile rb_atomic_t old_interrupt_mask = ec->interrupt_mask;
     enum ruby_tag_type state;
+    struct signal_exec_context ctx = {
+        .cmd = cmd, .sig = sig,
+    };
 
     /*
      * workaround the following race:
@@ -1058,12 +1079,7 @@ signal_exec(VALUE cmd, int sig)
 	return FALSE;
 
     ec->interrupt_mask |= TRAP_INTERRUPT_MASK;
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	VALUE signum = INT2NUM(sig);
-        rb_eval_cmd_kw(cmd, rb_ary_new3(1, signum), RB_NO_KEYWORDS);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, signal_exec_main, (VALUE)&ctx, NULL, Qnil);
     ec = GET_EC();
     ec->interrupt_mask = old_interrupt_mask;
 
