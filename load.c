@@ -725,16 +725,25 @@ rb_load(VALUE fname, int wrap)
     rb_load_internal(tmp, wrap);
 }
 
+struct rb_load_protect_context {
+    VALUE fname;
+    int wrap;
+};
+
+static void rb_load_protect_main(rb_execution_context_t * _, VALUE v)
+{
+    struct rb_load_protect_context *ctx = (struct rb_load_protect_context *)v;
+    rb_load(ctx->fname, ctx->wrap);
+}
 void
 rb_load_protect(VALUE fname, int wrap, int *pstate)
 {
     enum ruby_tag_type state;
+    struct rb_load_protect_context ctx = {
+        .fname = fname, .wrap = wrap
+    };
 
-    EC_PUSH_TAG(GET_EC());
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        rb_load(fname, wrap);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(GET_EC(), rb_load_protect_main, (VALUE)&ctx, NULL, Qnil);
 
     if (state != TAG_NONE) *pstate = state;
 }
