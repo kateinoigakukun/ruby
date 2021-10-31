@@ -1078,6 +1078,64 @@ rb_ext_ractor_safe(bool flag)
     GET_THREAD()->ext_config.ractor_safe = flag;
 }
 
+struct require_internal_context {
+    VALUE fname;
+    VALUE realpaths;
+    VALUE path;
+    volatile VALUE realpath;
+    volatile VALUE saved_path;
+    volatile int result;
+    char *volatile ftptr;
+    rb_thread_t *th;
+    struct rb_ext_config prev_ext_config;
+    bool warn;
+    volatile bool reset_ext_config;
+};
+
+static void
+require_internal_main(rb_execution_context_t * ec, VALUE v)
+{
+    struct require_internal_context *ctx = (struct require_internal_context *) v;
+    rb_thread_t *th = ctx->th;
+    long handle;
+    int found;
+
+    RUBY_DTRACE_HOOK(FIND_REQUIRE_ENTRY, RSTRING_PTR(ctx->fname));
+    found = search_required(th->vm, ctx->path, &ctx->saved_path, rb_feature_p);
+    RUBY_DTRACE_HOOK(FIND_REQUIRE_RETURN, RSTRING_PTR(ctx->fname));
+    ctx->path = ctx->saved_path;
+
+    if (found) {
+        if (!ctx->path || !(ctx->ftptr = load_lock(th->vm, RSTRING_PTR(ctx->path), ctx->warn))) {
+            ctx->result = 0;
+        }
+        else if (!*ctx->ftptr) {
+            ctx->result = TAG_RETURN;
+        }
+        else if (RTEST(rb_hash_aref(ctx->realpaths,
+		ctx->realpath = rb_realpath_internal(Qnil, ctx->path, 1)))) {
+            ctx->result = 0;
+        }
+        else {
+            switch (found) {
+              case 'r':
+                load_iseq_eval(ec, ctx->path);
+                break;
+
+              case 's':
+                ctx->reset_ext_config = true;
+                ext_config_push(th, &ctx->prev_ext_config);
+		handle = (long)rb_vm_call_cfunc(rb_vm_top_self(), load_ext,
+		    ctx->path, VM_BLOCK_HANDLER_NONE, ctx->path);
+                rb_ary_push(ruby_dln_librefs, LONG2NUM(handle));
+                break;
+            }
+            ctx->result = TAG_RETURN;
+        }
+    }
+}
+
+
 /*
  * returns
  *  0: if already loaded (false)
@@ -1088,7 +1146,6 @@ rb_ext_ractor_safe(bool flag)
 static int
 require_internal(rb_execution_context_t *ec, VALUE fname, int exception, bool warn)
 {
-    volatile int result = -1;
     rb_thread_t *th = rb_ec_thread_ptr(ec);
     volatile const struct {
         VALUE wrapper, self, errinfo;
@@ -1096,69 +1153,29 @@ require_internal(rb_execution_context_t *ec, VALUE fname, int exception, bool wa
         th->top_wrapper, th->top_self, ec->errinfo,
     };
     enum ruby_tag_type state;
-    char *volatile ftptr = 0;
-    VALUE path;
-    volatile VALUE saved_path;
-    volatile VALUE realpath = 0;
-    VALUE realpaths = get_loaded_features_realpaths(th->vm);
-    volatile bool reset_ext_config = false;
-    struct rb_ext_config prev_ext_config;
+    struct require_internal_context ctx = {
+        .fname = rb_get_path(fname), .realpaths = get_loaded_features_realpaths(th->vm),
+        .realpath = 0,
+        .result = -1, .ftptr = 0, .th = th,
+        .warn = warn, .reset_ext_config = false,
+    };
 
-    fname = rb_get_path(fname);
-    path = rb_str_encode_ospath(fname);
-    RUBY_DTRACE_HOOK(REQUIRE_ENTRY, RSTRING_PTR(fname));
-    saved_path = path;
+    ctx.path = rb_str_encode_ospath(ctx.fname);
+    RUBY_DTRACE_HOOK(REQUIRE_ENTRY, RSTRING_PTR(ctx.fname));
+    ctx.saved_path = ctx.path;
 
-    EC_PUSH_TAG(ec);
     ec->errinfo = Qnil; /* ensure */
     th->top_wrapper = 0;
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	long handle;
-	int found;
 
-	RUBY_DTRACE_HOOK(FIND_REQUIRE_ENTRY, RSTRING_PTR(fname));
-        found = search_required(th->vm, path, &saved_path, rb_feature_p);
-	RUBY_DTRACE_HOOK(FIND_REQUIRE_RETURN, RSTRING_PTR(fname));
-        path = saved_path;
-
-	if (found) {
-            if (!path || !(ftptr = load_lock(th->vm, RSTRING_PTR(path), warn))) {
-		result = 0;
-	    }
-	    else if (!*ftptr) {
-		result = TAG_RETURN;
-	    }
-            else if (RTEST(rb_hash_aref(realpaths,
-                                        realpath = rb_realpath_internal(Qnil, path, 1)))) {
-                result = 0;
-            }
-	    else {
-		switch (found) {
-		  case 'r':
-                    load_iseq_eval(ec, path);
-		    break;
-
-		  case 's':
-                    reset_ext_config = true;
-                    ext_config_push(th, &prev_ext_config);
-		    handle = (long)rb_vm_call_cfunc(rb_vm_top_self(), load_ext,
-						    path, VM_BLOCK_HANDLER_NONE, path);
-		    rb_ary_push(ruby_dln_librefs, LONG2NUM(handle));
-		    break;
-		}
-                result = TAG_RETURN;
-	    }
-	}
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, require_internal_main, (VALUE)&ctx, NULL, Qnil);
 
     rb_thread_t *th2 = rb_ec_thread_ptr(ec);
     th2->top_self = saved.self;
     th2->top_wrapper = saved.wrapper;
-    if (reset_ext_config) ext_config_pop(th2, &prev_ext_config);
+    if (ctx.reset_ext_config) ext_config_pop(th2, &ctx.prev_ext_config);
 
-    path = saved_path;
-    if (ftptr) load_unlock(th2->vm, RSTRING_PTR(path), !state);
+    ctx.path = ctx.saved_path;
+    if (ctx.ftptr) load_unlock(th2->vm, RSTRING_PTR(ctx.path), !state);
 
     if (state) {
         if (state == TAG_FATAL) {
@@ -1174,7 +1191,7 @@ require_internal(rb_execution_context_t *ec, VALUE fname, int exception, bool wa
         else if (state == TAG_RETURN) {
             return TAG_RAISE;
         }
-	RB_GC_GUARD(fname);
+	RB_GC_GUARD(ctx.fname);
 	/* never TAG_RETURN */
 	return state;
     }
@@ -1183,18 +1200,18 @@ require_internal(rb_execution_context_t *ec, VALUE fname, int exception, bool wa
         rb_exc_raise(ec->errinfo);
     }
 
-    if (result == TAG_RETURN) {
-        rb_provide_feature(th2->vm, path);
-        VALUE real = realpath;
+    if (ctx.result == TAG_RETURN) {
+        rb_provide_feature(th2->vm, ctx.path);
+        VALUE real = ctx.realpath;
         if (real) {
-            rb_hash_aset(realpaths, rb_fstring(real), Qtrue);
+            rb_hash_aset(ctx.realpaths, rb_fstring(real), Qtrue);
         }
     }
     ec->errinfo = saved.errinfo;
 
-    RUBY_DTRACE_HOOK(REQUIRE_RETURN, RSTRING_PTR(fname));
+    RUBY_DTRACE_HOOK(REQUIRE_RETURN, RSTRING_PTR(ctx.fname));
 
-    return result;
+    return ctx.result;
 }
 
 int
