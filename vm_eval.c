@@ -2417,33 +2417,71 @@ rb_catch(const char *tag, rb_block_call_func_t func, VALUE data)
     return rb_catch_obj(vtag, func, data);
 }
 
+struct vm_catch_protect_context {
+    VALUE tag;
+    VALUE data;
+    VALUE val;
+    rb_block_call_func *func;
+    rb_control_frame_t *volatile saved_cfp;
+};
+
+static void
+vm_catch_protect_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct vm_catch_protect_context *ctx = (struct vm_catch_protect_context *)v;
+    /* call with argc=1, argv = [tag], block = Qnil to insure compatibility */
+    ctx->val = (*ctx->func)(ctx->tag, ctx->data, 1, (const VALUE *)&ctx->tag, Qnil);
+}
+
+static enum ruby_tag_type
+vm_catch_protect_rescue(rb_execution_context_t *ec, VALUE v, enum ruby_tag_type state)
+{
+    struct vm_catch_protect_context *ctx = (struct vm_catch_protect_context *)v;
+    if (state == TAG_THROW && THROW_DATA_VAL((struct vm_throw_data *)ec->errinfo) == ctx->tag) {
+	rb_vm_rewind_cfp(ec, ctx->saved_cfp);
+	ctx->val = ec->tag->retval;
+	ec->errinfo = Qnil;
+	state = 0;
+    }
+    return state;
+}
+
+// FIXME(katei): workaround to insert `_tag.tag = tag`
+static enum ruby_tag_type
+rb_try_catch2(rb_execution_context_t *ec, VALUE tag,
+              void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+              enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2) {
+    enum ruby_tag_type state;
+
+    EC_PUSH_TAG(ec);
+    _tag.tag = tag;
+    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+        (*b_proc) (ec, data1);
+    }
+    else if (r_proc) {
+        state = (*r_proc) (ec, data2, state);
+    }
+    EC_POP_TAG();
+    return state;
+}
+
+
 static VALUE
 vm_catch_protect(VALUE tag, rb_block_call_func *func, VALUE data,
 		 enum ruby_tag_type *stateptr, rb_execution_context_t *volatile ec)
 {
     enum ruby_tag_type state;
-    VALUE val = Qnil;		/* OK */
-    rb_control_frame_t *volatile saved_cfp = ec->cfp;
+    struct vm_catch_protect_context ctx = {
+        .tag = tag, .func = func, .data = data,
+        .saved_cfp = ec->cfp, .val = Qnil, /* OK */
+    };
 
-    EC_PUSH_TAG(ec);
+    state = rb_try_catch2(ec, tag, vm_catch_protect_main, (VALUE)&ctx, vm_catch_protect_rescue, (VALUE)&ctx);
 
-    _tag.tag = tag;
-
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	/* call with argc=1, argv = [tag], block = Qnil to insure compatibility */
-	val = (*func)(tag, data, 1, (const VALUE *)&tag, Qnil);
-    }
-    else if (state == TAG_THROW && THROW_DATA_VAL((struct vm_throw_data *)ec->errinfo) == tag) {
-	rb_vm_rewind_cfp(ec, saved_cfp);
-	val = ec->tag->retval;
-	ec->errinfo = Qnil;
-	state = 0;
-    }
-    EC_POP_TAG();
     if (stateptr)
 	*stateptr = state;
 
-    return val;
+    return ctx.val;
 }
 
 VALUE
