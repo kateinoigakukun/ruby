@@ -352,6 +352,13 @@ rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
     return sysex;
 }
 
+static void
+rb_ec_exec_node_main(VALUE v)
+{
+    rb_iseq_t *iseq = (rb_iseq_t *)v;
+    rb_iseq_eval_main(iseq);
+}
+
 static int
 rb_ec_exec_node(rb_execution_context_t *ec, void *n)
 {
@@ -359,14 +366,7 @@ rb_ec_exec_node(rb_execution_context_t *ec, void *n)
     rb_iseq_t *iseq = (rb_iseq_t *)n;
     if (!n) return 0;
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        rb_thread_t *const th = rb_ec_thread_ptr(ec);
-	SAVE_ROOT_JMPBUF(th, {
-	    rb_iseq_eval_main(iseq);
-	});
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, rb_ec_exec_node_main, (VALUE)iseq, NULL, Qnil);
     return state;
 }
 
