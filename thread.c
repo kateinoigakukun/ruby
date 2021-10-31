@@ -148,8 +148,8 @@ void rb_sigwait_fd_migrate(rb_vm_t *); /* process.c */
 // FIXME: Please place it in a suitable file!!!
 enum ruby_tag_type
 rb_try_catch(rb_execution_context_t *ec,
-             void (* b_proc) (VALUE), VALUE data1,
-             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2);
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
 
 #define eKillSignal INT2FIX(0)
 #define eTerminateSignal INT2FIX(1)
@@ -571,7 +571,7 @@ rb_threadptr_join_list_wakeup(rb_thread_t *thread)
 }
 
 static void
-rb_threadptr_join_list_wakeup_thunk(VALUE v)
+rb_threadptr_join_list_wakeup_thunk(rb_execution_context_t * _, VALUE v)
 {
     rb_threadptr_join_list_wakeup((rb_thread_t *)v);
 }
@@ -597,7 +597,7 @@ struct rb_thread_terminate_all_context {
     rb_thread_t *th;
 };
 
-static void rb_thread_terminate_all_main(VALUE v) {
+static void rb_thread_terminate_all_main(rb_execution_context_t * _, VALUE v) {
     struct rb_thread_terminate_all_context *ctx = (struct rb_thread_terminate_all_context *)v;
     rb_thread_t *th = ctx->th;
     rb_ractor_t *cr = th->ractor;
@@ -621,7 +621,7 @@ static void rb_thread_terminate_all_main(VALUE v) {
     }
 }
 
-static enum ruby_tag_type rb_thread_terminate_all_rescue(VALUE v, enum ruby_tag_type state) {
+static enum ruby_tag_type rb_thread_terminate_all_rescue(rb_execution_context_t * _, VALUE v, enum ruby_tag_type state) {
     struct rb_thread_terminate_all_context *ctx = (struct rb_thread_terminate_all_context *)v;
     /*
     * When caught an exception (e.g. Ctrl+C), let's broadcast
@@ -816,12 +816,12 @@ struct thread_start_func_2_context {
     rb_thread_t *th;
 };
 
-static void thread_start_func_2_main(VALUE v) {
+static void thread_start_func_2_main(rb_execution_context_t * _, VALUE v) {
     struct thread_start_func_2_context *ctx = (struct thread_start_func_2_context *)v;
     rb_thread_t *th = ctx->th;
     thread_do_start(th);
 }
-static enum ruby_tag_type thread_start_func_2_rescue(VALUE v, enum ruby_tag_type state) {
+static enum ruby_tag_type thread_start_func_2_rescue(rb_execution_context_t * _, VALUE v, enum ruby_tag_type state) {
     struct thread_start_func_2_context *ctx = (struct thread_start_func_2_context *)v;
     rb_thread_t *th = ctx->th;
     *ctx->errinfo = th->ec->errinfo;
@@ -1866,7 +1866,7 @@ struct rb_thread_io_blocking_region_context {
     int saved_errno;
 };
 
-static void rb_thread_io_blocking_region_main(VALUE v) {
+static void rb_thread_io_blocking_region_main(rb_execution_context_t * _, VALUE v) {
     struct rb_thread_io_blocking_region_context *ctx = (struct rb_thread_io_blocking_region_context *)v;
     rb_thread_t *th = ctx->waiting_fd.th;
     BLOCKING_REGION(th, {
@@ -2308,7 +2308,7 @@ handle_interrupt_arg_check_i(VALUE key, VALUE val, VALUE args)
  * as the ExceptionClass, as kill/terminate interrupts are not handled by +Exception+.
  */
 static void
-rb_thread_s_handle_interrupt_main(VALUE v)
+rb_thread_s_handle_interrupt_main(rb_execution_context_t * _, VALUE v)
 {
     VALUE *result = (VALUE *)v;
     *result = rb_yield(Qnil);
@@ -5328,7 +5328,7 @@ struct exec_recursive_context {
     VALUE arg;
     VALUE ret;
 };
-static void exec_recursive_thunk(VALUE v) {
+static void exec_recursive_thunk(rb_execution_context_t * _, VALUE v) {
     struct exec_recursive_context *ctx = (struct exec_recursive_context *)v;
     ctx->ret = (*ctx->func)(ctx->obj, ctx->arg, FALSE);
 }

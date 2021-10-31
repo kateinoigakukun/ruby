@@ -47,16 +47,16 @@ static int rb_ec_exec_node(rb_execution_context_t *ec, void *n);
 
 enum ruby_tag_type
 rb_try_catch(rb_execution_context_t *ec,
-             void (* b_proc) (VALUE), VALUE data1,
-             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2) {
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2) {
     enum ruby_tag_type state;
 
     EC_PUSH_TAG(ec);
     if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        (*b_proc) (data1);
+        (*b_proc) (ec, data1);
     }
     else if (r_proc) {
-        state = (*r_proc) (data2, state);
+        state = (*r_proc) (ec, data2, state);
     }
     EC_POP_TAG();
     return state;
@@ -79,7 +79,7 @@ extern ID ruby_static_id_cause;
      (BUILTIN_TYPE(obj) == T_CLASS || BUILTIN_TYPE(obj) == T_MODULE))
 
 static void
-ruby_setup_main(VALUE v)
+ruby_setup_main(rb_execution_context_t * _, VALUE v)
 {
     rb_call_inits();
     ruby_prog_init();
@@ -131,17 +131,16 @@ struct ruby_options_context {
 };
 
 static void
-ruby_options_main(VALUE v)
+ruby_options_main(rb_execution_context_t * _, VALUE v)
 {
     struct ruby_options_context *arg = (struct ruby_options_context *) v;
     arg->iseq = ruby_process_options(arg->argc, arg->argv);
 }
 
 static enum ruby_tag_type
-ruby_options_rescue(VALUE v, enum ruby_tag_type state)
+ruby_options_rescue(rb_execution_context_t * ec, VALUE v, enum ruby_tag_type state)
 {
     struct ruby_options_context *arg = (struct ruby_options_context *) v;
-    rb_execution_context_t *ec = GET_EC();
     rb_ec_clear_current_thread_trace_func(ec);
     state = error_handle(ec, state);
     arg->iseq = (void *)INT2FIX(state);
@@ -159,29 +158,26 @@ ruby_options(int argc, char **argv)
 }
 
 static void
-rb_ec_fiber_scheduler_finalize_main(VALUE v)
+rb_ec_fiber_scheduler_finalize_main(rb_execution_context_t * _, VALUE v)
 {
     rb_fiber_scheduler_set(Qnil);
 }
 
 static enum ruby_tag_type
-rb_ec_fiber_scheduler_finalize_rescue(VALUE v, enum ruby_tag_type state)
+rb_ec_fiber_scheduler_finalize_rescue(rb_execution_context_t * ec, VALUE v, enum ruby_tag_type state)
 {
-    rb_execution_context_t *ec = (rb_execution_context_t *)v;
-    state = error_handle(ec, state);
-    return state;
+    return error_handle(ec, state);
 }
 
 static void
 rb_ec_fiber_scheduler_finalize(rb_execution_context_t *ec)
 {
-    rb_try_catch(ec, rb_ec_fiber_scheduler_finalize_main, Qnil, rb_ec_fiber_scheduler_finalize_rescue, (VALUE)ec);
+    rb_try_catch(ec, rb_ec_fiber_scheduler_finalize_main, Qnil, rb_ec_fiber_scheduler_finalize_rescue, Qnil);
 }
 
 static void
-rb_ec_teardown_main(VALUE v)
+rb_ec_teardown_main(rb_execution_context_t *ec, VALUE v)
 {
-    rb_execution_context_t *ec = (rb_execution_context_t *)v;
     rb_vm_trap_exit(rb_ec_vm_ptr(ec));
 }
 
@@ -191,7 +187,7 @@ rb_ec_teardown(rb_execution_context_t *ec)
     // If the user code defined a scheduler for the top level thread, run it:
     rb_ec_fiber_scheduler_finalize(ec);
 
-    rb_try_catch(ec, rb_ec_teardown_main, (VALUE)ec, NULL, Qnil);
+    rb_try_catch(ec, rb_ec_teardown_main, Qnil, NULL, Qnil);
 
     rb_ec_exec_end_proc(ec);
     rb_ec_clear_all_trace_func(ec);
@@ -220,7 +216,6 @@ ruby_cleanup(int ex)
 }
 
 struct rb_ec_cleanup_context {
-    rb_execution_context_t *ec;
     rb_thread_t **th;
     volatile VALUE *errs;
 };
@@ -233,7 +228,7 @@ struct rb_ec_cleanup_rescue_context {
 };
 
 static enum ruby_tag_type
-rb_ec_cleanup_rescue(VALUE v, enum ruby_tag_type state)
+rb_ec_cleanup_rescue(rb_execution_context_t * _, VALUE v, enum ruby_tag_type state)
 {
     struct rb_ec_cleanup_rescue_context *ctx = (struct rb_ec_cleanup_rescue_context *)v;
     *(ctx->th) = ctx->th0;
@@ -244,19 +239,17 @@ rb_ec_cleanup_rescue(VALUE v, enum ruby_tag_type state)
 }
 
 static void
-rb_ec_cleanup_step0_main(VALUE v)
+rb_ec_cleanup_step0_main(rb_execution_context_t *ec, VALUE _)
 {
-    rb_execution_context_t *ec = (rb_execution_context_t *)v;
     RUBY_VM_CHECK_INTS(ec);
 }
 
 static void
-rb_ec_cleanup_step1_main(VALUE v)
+rb_ec_cleanup_step1_main(rb_execution_context_t *ec, VALUE v)
 {
     struct rb_ec_cleanup_context *ctx = (struct rb_ec_cleanup_context *)v;
-    rb_execution_context_t *ec = ctx->ec;
 
-    ctx->errs[1] = ctx->ec->errinfo;
+    ctx->errs[1] = ec->errinfo;
     if (THROW_DATA_P(ec->errinfo)) {
         ec->errinfo = Qnil;
     }
@@ -266,10 +259,9 @@ rb_ec_cleanup_step1_main(VALUE v)
 }
 
 static void
-rb_ec_cleanup_step2_main(VALUE v)
+rb_ec_cleanup_step2_main(rb_execution_context_t *ec, VALUE v)
 {
     struct rb_ec_cleanup_context *ctx = (struct rb_ec_cleanup_context *)v;
-    rb_execution_context_t *ec = ctx->ec;
 
     /* protect from Thread#raise */
     (*ctx->th)->status = THREAD_KILLED;
@@ -291,7 +283,7 @@ rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
         .th = &th, .th0 = th0, .step = 0, .ex = &ex,
     };
     struct rb_ec_cleanup_context steps_ctx = {
-        .ec = ec, .errs = errs, .th = &th,
+        .errs = errs, .th = &th,
     };
 
     rb_threadptr_interrupt(th);
@@ -353,7 +345,7 @@ rb_ec_cleanup(rb_execution_context_t *ec, int ex0)
 }
 
 static void
-rb_ec_exec_node_main(VALUE v)
+rb_ec_exec_node_main(rb_execution_context_t *_, VALUE v)
 {
     rb_iseq_t *iseq = (rb_iseq_t *)v;
     rb_iseq_eval_main(iseq);
@@ -627,12 +619,11 @@ struct setup_exception_context {
     volatile VALUE *mesg;
     VALUE *cause;
     VALUE e;
-    rb_execution_context_t *ec;
     const char *file;
     int line;
 };
 
-static void setup_exception_thunk1(VALUE v) {
+static void setup_exception_thunk1(rb_execution_context_t * ec, VALUE v) {
     struct setup_exception_context *ctx = (struct setup_exception_context *)v;
 
     VALUE bt = rb_get_backtrace(*ctx->mesg);
@@ -645,18 +636,18 @@ static void setup_exception_thunk1(VALUE v) {
         exc_setup_cause(*ctx->mesg, *ctx->cause);
     }
     if (NIL_P(bt)) {
-        VALUE at = rb_ec_backtrace_object(ctx->ec);
+        VALUE at = rb_ec_backtrace_object(ec);
         rb_ivar_set(*ctx->mesg, idBt_locations, at);
         set_backtrace(*ctx->mesg, at);
     }
-    rb_ec_reset_raised(ctx->ec);
+    rb_ec_reset_raised(ec);
 }
-static void setup_exception_thunk2(VALUE v) {
+static void setup_exception_thunk2(rb_execution_context_t * ec, VALUE v) {
     struct setup_exception_context *ctx = (struct setup_exception_context *)v;
 
-    ctx->ec->errinfo = Qnil;
+    ec->errinfo = Qnil;
     ctx->e = rb_obj_as_string(*ctx->mesg);
-    ctx->ec->errinfo = *ctx->mesg;
+    ec->errinfo = *ctx->mesg;
     if (ctx->file && ctx->line) {
         ctx->e = rb_sprintf("Exception `%" PRIsVALUE "' at %s:%d - %" PRIsVALUE "\n",
                        rb_obj_class(*ctx->mesg), ctx->file, ctx->line, ctx->e);
@@ -676,7 +667,7 @@ static void
 setup_exception(rb_execution_context_t *ec, int tag, volatile VALUE mesg, VALUE cause)
 {
     struct setup_exception_context ctx = {
-        .mesg = &mesg, .cause = &cause, .ec = ec, .file = rb_source_location_cstr(NULL), .line = 0,
+        .mesg = &mesg, .cause = &cause, .file = rb_source_location_cstr(NULL), .line = 0,
     };
     const char *const volatile file0 = ctx.file;
 

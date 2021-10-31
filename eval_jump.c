@@ -110,25 +110,18 @@ exec_end_procs_chain(struct end_proc_data *volatile *procs, VALUE *errp)
 // FIXME(katei): Please place it in a suitable file!!!
 enum ruby_tag_type
 rb_try_catch(rb_execution_context_t *ec,
-             void (* b_proc) (VALUE), VALUE data1,
-             enum ruby_tag_type (* r_proc) (VALUE, enum ruby_tag_type), VALUE data2);
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
 
-struct  rb_ec_exec_end_proc_context {
-    rb_execution_context_t * ec;
-    volatile VALUE errinfo;
-};
-
-static void rb_ec_exec_end_proc_main(VALUE v)
+static void rb_ec_exec_end_proc_main(rb_execution_context_t * ec, VALUE _)
 {
-    struct rb_ec_exec_end_proc_context *ctx = (struct rb_ec_exec_end_proc_context *)v;
-    exec_end_procs_chain(&ephemeral_end_procs, &ctx->ec->errinfo);
-    exec_end_procs_chain(&end_procs, &ctx->ec->errinfo);
+    exec_end_procs_chain(&ephemeral_end_procs, &ec->errinfo);
+    exec_end_procs_chain(&end_procs, &ec->errinfo);
 }
 
-static enum ruby_tag_type rb_ec_exec_end_proc_rescue(VALUE v, enum ruby_tag_type state)
+static enum ruby_tag_type rb_ec_exec_end_proc_rescue(rb_execution_context_t * ec, VALUE v, enum ruby_tag_type state)
 {
-    struct rb_ec_exec_end_proc_context *ctx = (struct rb_ec_exec_end_proc_context *)v;
-    rb_execution_context_t *ec = ctx->ec;
+    volatile VALUE *errinfo = (volatile VALUE *)v;
 
     // FIXME(katei): Should encapsulate _ec and _tag variables?
     rb_execution_context_t *_ec = ec;
@@ -137,7 +130,7 @@ static enum ruby_tag_type rb_ec_exec_end_proc_rescue(VALUE v, enum ruby_tag_type
 	EC_TMPPOP_TAG();
     error_handle(ec, state);
 	if (!NIL_P(ec->errinfo)) {
-        ctx->errinfo = ec->errinfo;
+        *errinfo = ec->errinfo;
     }
 	EC_REPUSH_TAG();
     return state;
@@ -147,15 +140,13 @@ static void
 rb_ec_exec_end_proc(rb_execution_context_t * ec)
 {
     enum ruby_tag_type state;
-    struct rb_ec_exec_end_proc_context ctx = {
-        .ec = ec, .errinfo = ec->errinfo
-    };
+    volatile VALUE errinfo = ec->errinfo;
 
     do {
-        state = rb_try_catch(ec, rb_ec_exec_end_proc_main, (VALUE)&ctx, rb_ec_exec_end_proc_rescue, (VALUE)&ctx);
+        state = rb_try_catch(ec, rb_ec_exec_end_proc_main, Qnil, rb_ec_exec_end_proc_rescue, (VALUE)&errinfo);
     } while (state != TAG_NONE);
 
-    ec->errinfo = ctx.errinfo;
+    ec->errinfo = errinfo;
 }
 
 void

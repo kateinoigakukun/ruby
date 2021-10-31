@@ -364,14 +364,14 @@ struct rb_ec_error_print_context {
 };
 
 void
-rb_ec_error_print_thunk1(VALUE v)
+rb_ec_error_print_thunk1(rb_execution_context_t * _, VALUE v)
 {
     struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
     ctx->errat = rb_get_backtrace(*ctx->errinfo);
 }
 
 void
-rb_ec_error_print_thunk2(VALUE v)
+rb_ec_error_print_thunk2(rb_execution_context_t * _, VALUE v)
 {
     struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
     ctx->emesg = Qnil;
@@ -379,7 +379,7 @@ rb_ec_error_print_thunk2(VALUE v)
 }
 
 void
-rb_ec_error_print_thunk3(VALUE v)
+rb_ec_error_print_thunk3(rb_execution_context_t * _, VALUE v)
 {
     struct rb_ec_error_print_context *ctx = (struct rb_ec_error_print_context *)v;
     rb_error_write(*ctx->errinfo, ctx->emesg, ctx->errat, Qnil, Qnil, Qfalse);
