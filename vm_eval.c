@@ -1921,27 +1921,40 @@ rb_eval_string_wrap(const char *str, int *pstate)
     return val;
 }
 
+struct rb_eval_cmd_kw_context {
+    VALUE cmd;
+    VALUE arg;
+    volatile VALUE val;
+    int kw_splat;
+};
+
+static void
+rb_eval_cmd_kw_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_eval_cmd_kw_context *ctx = (struct rb_eval_cmd_kw_context *)v;
+    if (!RB_TYPE_P(ctx->cmd, T_STRING)) {
+        ctx->val = rb_funcallv_kw(ctx->cmd, idCall, RARRAY_LENINT(ctx->arg),
+                RARRAY_CONST_PTR(ctx->arg), ctx->kw_splat);
+    }
+    else {
+        ctx->val = eval_string_with_cref(rb_vm_top_self(), ctx->cmd, NULL, 0, 0);
+    }
+}
+
 VALUE
 rb_eval_cmd_kw(VALUE cmd, VALUE arg, int kw_splat)
 {
     enum ruby_tag_type state;
-    volatile VALUE val = Qnil;		/* OK */
     rb_execution_context_t * volatile ec = GET_EC();
+    struct rb_eval_cmd_kw_context ctx = {
+        .cmd = cmd, .arg = arg, .val = Qnil, /* OK */
+        .kw_splat = kw_splat,
+    };
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	if (!RB_TYPE_P(cmd, T_STRING)) {
-            val = rb_funcallv_kw(cmd, idCall, RARRAY_LENINT(arg),
-                              RARRAY_CONST_PTR(arg), kw_splat);
-	}
-	else {
-	    val = eval_string_with_cref(rb_vm_top_self(), cmd, NULL, 0, 0);
-	}
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, rb_eval_cmd_kw_main, (VALUE)&ctx, NULL, Qnil);
 
     if (state) EC_JUMP_TAG(ec, state);
-    return val;
+    return ctx.val;
 }
 
 /* block eval under the class/module context */
