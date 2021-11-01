@@ -993,14 +993,14 @@ struct rb_vrescue2_context {
 static void
 rb_vrescue2_main(rb_execution_context_t *ec, VALUE v)
 {
-    struct rb_vrescue2_context *ctx = (struct rb_vrescue2_context *)v;
+    struct rb_vrescue2_context * volatile ctx = (struct rb_vrescue2_context * volatile)v;
     ctx->result = (*ctx->b_proc) (ctx->data1);
 }
 
 static enum ruby_tag_type
 rb_vrescue2_rescue(rb_execution_context_t *ec, VALUE v, enum ruby_tag_type state)
 {
-    struct rb_vrescue2_context *ctx = (struct rb_vrescue2_context *)v;
+    struct rb_vrescue2_context * volatile ctx = (struct rb_vrescue2_context * volatile)v;
     if (ctx->result) {
 	/* escape from r_proc */
 	if (state == TAG_RETRY) {
