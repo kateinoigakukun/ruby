@@ -979,40 +979,45 @@ rb_rescue2(VALUE (* b_proc) (VALUE), VALUE data1,
     return ret;
 }
 
-VALUE
-rb_vrescue2(VALUE (* b_proc) (VALUE), VALUE data1,
-            VALUE (* r_proc) (VALUE, VALUE), VALUE data2,
-            va_list args)
-{
-    enum ruby_tag_type state;
-    rb_execution_context_t * volatile ec = GET_EC();
-    rb_control_frame_t *volatile cfp = ec->cfp;
-    volatile VALUE result = Qfalse;
-    volatile VALUE e_info = ec->errinfo;
+struct rb_vrescue2_context {
+    VALUE (* b_proc) (VALUE);
+    VALUE data1;
+    VALUE (* r_proc) (VALUE, VALUE);
+    VALUE data2;
+    VALUE result;
+    VALUE e_info;
+    rb_control_frame_t *volatile cfp;
+};
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-      retry_entry:
-	result = (*b_proc) (data1);
-    }
-    else if (result) {
+static void
+rb_vrescue2_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_vrescue2_context * volatile ctx = (struct rb_vrescue2_context * volatile)v;
+    ctx->result = (*ctx->b_proc) (ctx->data1);
+}
+
+static enum ruby_tag_type
+rb_vrescue2_rescue(rb_execution_context_t *ec, VALUE v, enum ruby_tag_type state, va_list args)
+{
+    struct rb_vrescue2_context * volatile ctx = (struct rb_vrescue2_context * volatile)v;
+    if (ctx->result) {
 	/* escape from r_proc */
 	if (state == TAG_RETRY) {
 	    state = TAG_NONE;
 	    ec->errinfo = Qnil;
-	    result = Qfalse;
-	    goto retry_entry;
+	    ctx->result = Qfalse;
+            // !! THIS POTENTIALLY THROWS EXCEPTION !!
+            rb_vrescue2_main(ec, (VALUE)&ctx);
 	}
-    }
-    else {
-	rb_vm_rewind_cfp(ec, cfp);
+    } else {
+	rb_vm_rewind_cfp(ec, ctx->cfp);
 
 	if (state == TAG_RAISE) {
 	    int handle = FALSE;
 	    VALUE eclass;
 	    va_list ap;
 
-	    result = Qnil;
+	    ctx->result = Qnil;
 	    /* reuses args when raised again after retrying in r_proc */
 	    va_copy(ap, args);
 	    while ((eclass = va_arg(ap, VALUE)) != 0) {
@@ -1025,18 +1030,43 @@ rb_vrescue2(VALUE (* b_proc) (VALUE), VALUE data1,
 
 	    if (handle) {
 		state = TAG_NONE;
-		if (r_proc) {
-		    result = (*r_proc) (data2, ec->errinfo);
+		if (ctx->r_proc) {
+		    ctx->result = (*ctx->r_proc) (ctx->data2, ec->errinfo);
 		}
-		ec->errinfo = e_info;
+		ec->errinfo = ctx->e_info;
 	    }
 	}
+    }
+    return state;
+}
+
+VALUE
+rb_vrescue2(VALUE (* b_proc) (VALUE), VALUE data1,
+            VALUE (* r_proc) (VALUE, VALUE), VALUE data2,
+            va_list args)
+{
+    enum ruby_tag_type state;
+    rb_execution_context_t * volatile ec = GET_EC();
+    struct rb_vrescue2_context ctx = {
+        .b_proc = b_proc, .data1 = data1,
+        .r_proc = r_proc, .data2 = data2,
+        .result = Qfalse,
+        .cfp = ec->cfp, .e_info = ec->errinfo,
+    };
+
+    EC_PUSH_TAG(ec);
+    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
+        rb_vrescue2_main(ec, (VALUE)&ctx);
+    }
+    else {
+        // This may throw exception. If got, this line will be reached again.
+        state = rb_vrescue2_rescue(ec, (VALUE)&ctx, state, args);
     }
     EC_POP_TAG();
     if (state)
 	EC_JUMP_TAG(ec, state);
 
-    return result;
+    return ctx.result;
 }
 
 VALUE
