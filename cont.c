@@ -2034,49 +2034,65 @@ rb_fiber_set_scheduler(VALUE klass, VALUE scheduler)
 
 static void rb_fiber_terminate(rb_fiber_t *fiber, int need_interrupt, VALUE err);
 
+struct rb_fiber_start_context {
+    rb_fiber_t *fiber;
+    rb_proc_t *proc;
+    rb_thread_t * volatile th;
+};
+
+static void
+rb_fiber_start_main(rb_execution_context_t * ec, VALUE v)
+{
+    struct rb_fiber_start_context *ctx = (struct rb_fiber_start_context *) v;
+    rb_context_t *cont = &VAR_FROM_MEMORY(ctx->fiber)->cont;
+    int argc;
+    const VALUE *argv, args = cont->value;
+    GetProcPtr(ctx->fiber->first_proc, ctx->proc);
+    argv = (argc = cont->argc) > 1 ? RARRAY_CONST_PTR(args) : &args;
+    cont->value = Qnil;
+    ctx->th->ec->errinfo = Qnil;
+    ctx->th->ec->root_lep = rb_vm_proc_local_ep(ctx->fiber->first_proc);
+    ctx->th->ec->root_svar = Qfalse;
+
+    EXEC_EVENT_HOOK(ctx->th->ec, RUBY_EVENT_FIBER_SWITCH, ctx->th->self, 0, 0, 0, Qnil);
+    cont->value = rb_vm_invoke_proc(ctx->th->ec, ctx->proc, argc, argv, cont->kw_splat, VM_BLOCK_HANDLER_NONE);
+}
+
+// FIXME(katei): Please place it in a suitable file!!!
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2);
+
 void
 rb_fiber_start(rb_fiber_t *fiber)
 {
-    rb_thread_t * volatile th = fiber->cont.saved_ec.thread_ptr;
+    struct rb_fiber_start_context ctx = {
+        .fiber = fiber, .th = fiber->cont.saved_ec.thread_ptr
+    };
 
-    rb_proc_t *proc;
     enum ruby_tag_type state;
     int need_interrupt = TRUE;
 
-    VM_ASSERT(th->ec == GET_EC());
+    VM_ASSERT(ctx.th->ec == GET_EC());
     VM_ASSERT(FIBER_RESUMED_P(fiber));
 
     if (fiber->blocking) {
-        th->blocking += 1;
+        ctx.th->blocking += 1;
     }
 
-    EC_PUSH_TAG(th->ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        rb_context_t *cont = &VAR_FROM_MEMORY(fiber)->cont;
-        int argc;
-        const VALUE *argv, args = cont->value;
-        GetProcPtr(fiber->first_proc, proc);
-        argv = (argc = cont->argc) > 1 ? RARRAY_CONST_PTR(args) : &args;
-        cont->value = Qnil;
-        th->ec->errinfo = Qnil;
-        th->ec->root_lep = rb_vm_proc_local_ep(fiber->first_proc);
-        th->ec->root_svar = Qfalse;
-
-        EXEC_EVENT_HOOK(th->ec, RUBY_EVENT_FIBER_SWITCH, th->self, 0, 0, 0, Qnil);
-        cont->value = rb_vm_invoke_proc(th->ec, proc, argc, argv, cont->kw_splat, VM_BLOCK_HANDLER_NONE);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ctx.th->ec, rb_fiber_start_main, (VALUE)&ctx, NULL, Qnil);
 
     VALUE err = Qfalse;
     if (state) {
-        err = th->ec->errinfo;
+        err = ctx.th->ec->errinfo;
         VM_ASSERT(FIBER_RESUMED_P(fiber));
 
         if (state == TAG_RAISE) {
             // noop...
         }
         else if (state == TAG_FATAL) {
-            rb_threadptr_pending_interrupt_enque(th, err);
+            rb_threadptr_pending_interrupt_enque(ctx.th, err);
         }
         else {
             err = rb_vm_make_jump_tag_but_local_jump(state, err);
