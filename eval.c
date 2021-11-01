@@ -1047,25 +1047,41 @@ rb_rescue(VALUE (* b_proc)(VALUE), VALUE data1,
 		      (VALUE)0);
 }
 
+struct rb_protect_context {
+    VALUE (* proc) (VALUE);
+    VALUE data;
+    VALUE result;
+};
+
+static void
+rb_protect_main(rb_execution_context_t *ec, VALUE v)
+{
+    struct rb_protect_context *ctx = (struct rb_protect_context *)v;
+    ctx->result = (*ctx->proc) (ctx->data);
+}
+
+static enum ruby_tag_type
+rb_protect_rescue(rb_execution_context_t *ec, VALUE v, enum ruby_tag_type state)
+{
+    rb_control_frame_t *volatile cfp = (rb_control_frame_t *)v;
+    rb_vm_rewind_cfp(ec, cfp);
+    return state;
+}
+
 VALUE
 rb_protect(VALUE (* proc) (VALUE), VALUE data, int *pstate)
 {
-    volatile VALUE result = Qnil;
     volatile enum ruby_tag_type state;
     rb_execution_context_t * volatile ec = GET_EC();
     rb_control_frame_t *volatile cfp = ec->cfp;
+    struct rb_protect_context ctx = {
+        .proc = proc, .data = data, .result = Qnil,
+    };
 
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	SAVE_ROOT_JMPBUF(rb_ec_thread_ptr(ec), result = (*proc) (data));
-    }
-    else {
-	rb_vm_rewind_cfp(ec, cfp);
-    }
-    EC_POP_TAG();
+    state = rb_try_catch(ec, rb_protect_main, (VALUE)&ctx, rb_protect_rescue, (VALUE)cfp);
 
     if (pstate != NULL) *pstate = state;
-    return result;
+    return ctx.result;
 }
 
 VALUE
