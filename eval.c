@@ -1114,11 +1114,25 @@ rb_protect(VALUE (* proc) (VALUE), VALUE data, int *pstate)
     return ctx.result;
 }
 
+struct rb_ensure_context {
+    VALUE (*b_proc)(VALUE);
+    VALUE data1;
+    VALUE result;
+};
+static void
+rb_ensure_main(rb_execution_context_t * _, VALUE v)
+{
+    struct rb_ensure_context *ctx = (struct rb_ensure_context *)v;
+    ctx->result = (*ctx->b_proc) (ctx->data1);
+}
+
 VALUE
 rb_ensure(VALUE (*b_proc)(VALUE), VALUE data1, VALUE (*e_proc)(VALUE), VALUE data2)
 {
     int state;
-    volatile VALUE result = Qnil;
+    struct rb_ensure_context ctx = {
+        .b_proc = b_proc, .data1 = data1, .result = Qnil,
+    };
     VALUE errinfo;
     rb_execution_context_t * volatile ec = GET_EC();
     rb_ensure_list_t ensure_list;
@@ -1127,11 +1141,9 @@ rb_ensure(VALUE (*b_proc)(VALUE), VALUE data1, VALUE (*e_proc)(VALUE), VALUE dat
     ensure_list.entry.data2 = data2;
     ensure_list.next = ec->ensure_list;
     ec->ensure_list = &ensure_list;
-    EC_PUSH_TAG(ec);
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-	result = (*b_proc) (data1);
-    }
-    EC_POP_TAG();
+
+    state = rb_try_catch(ec, rb_ensure_main, (VALUE)&ctx, NULL, Qnil);
+
     errinfo = ec->errinfo;
     if (!NIL_P(errinfo) && !RB_TYPE_P(errinfo, T_OBJECT)) {
 	ec->errinfo = Qnil;
@@ -1141,7 +1153,7 @@ rb_ensure(VALUE (*b_proc)(VALUE), VALUE data1, VALUE (*e_proc)(VALUE), VALUE dat
     ec->errinfo = errinfo;
     if (state)
 	EC_JUMP_TAG(ec, state);
-    return result;
+    return ctx.result;
 }
 
 static ID
