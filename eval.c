@@ -45,6 +45,31 @@ void rb_ec_clear_all_trace_func(const rb_execution_context_t *ec);
 static int rb_ec_cleanup(rb_execution_context_t *ec, int ex);
 static int rb_ec_exec_node(rb_execution_context_t *ec, void *n);
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+
+/// returns 0 if succeed, otherwise returns a thrown value
+int rb_wasm_try(void (* may_throw)(VALUE, VALUE), VALUE arg0, VALUE arg1);
+
+enum ruby_tag_type
+rb_try_catch(rb_execution_context_t *ec,
+             void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
+             enum ruby_tag_type (* r_proc) (rb_execution_context_t *, VALUE, enum ruby_tag_type), VALUE data2) {
+    enum ruby_tag_type state = TAG_NONE;
+    int got_exception;
+    EC_PUSH_TAG(ec);
+    EC_REPUSH_TAG();
+    got_exception = rb_wasm_try((void (*)(VALUE, VALUE))b_proc, (VALUE)ec, data1);
+    if (got_exception) {
+      state = rb_ec_tag_state(_ec);
+      if (state != TAG_NONE && r_proc) {
+        state = (*r_proc) (ec, data2, state);
+      }
+    }
+    EC_POP_TAG();
+    return state;
+}
+
+#else
 enum ruby_tag_type
 rb_try_catch(rb_execution_context_t *ec,
              void (* b_proc) (rb_execution_context_t *, VALUE), VALUE data1,
@@ -61,6 +86,7 @@ rb_try_catch(rb_execution_context_t *ec,
     EC_POP_TAG();
     return state;
 }
+#endif
 
 VALUE rb_eLocalJumpError;
 VALUE rb_eSysStackError;
