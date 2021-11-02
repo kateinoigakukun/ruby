@@ -154,16 +154,38 @@ int flock(int, int);
 
 
 #ifdef __wasi__
+#include <stdio.h>
+#include <errno.h>
+#define define_wasi_stub(fn, res) fn { \
+  return res; \
+}
 // FIXME(katei): disable these uses
-uid_t geteuid(void) { return 0; }
-uid_t getuid(void) { return 0; }
-int getegid(void) { return 0; }
-int getgid(void) { return 0; }
+define_wasi_stub(uid_t geteuid(void), 0)
+define_wasi_stub(uid_t getuid(void), 0)
+define_wasi_stub(int getegid(void), 0)
+define_wasi_stub(int getgid(void), 0)
 
-char *getlogin(void) { return NULL; }
-int umask(int mask) { return 0; }
-int chmod(const char *pathname, int mode) { return 0; }
-int chown(const char *pathname, int owner, int group) { return 0; }
+define_wasi_stub(char *getlogin(void), 0)
+define_wasi_stub(int umask(int mask), 0)
+define_wasi_stub(int chmod(const char *pathname, int mode), 0)
+define_wasi_stub(int chown(const char *pathname, int owner, int group), 0)
+
+define_wasi_stub(int pclose(FILE *stream), ENOTSUP)
+define_wasi_stub(int pipe(int pipefd[2]), ENOTSUP)
+define_wasi_stub(FILE *popen(const char *command, const char *type), NULL)
+define_wasi_stub(int dup(int oldfd), ENOTSUP)
+define_wasi_stub(int dup2(int oldfd, int newfd), ENOTSUP)
+
+define_wasi_stub(int kill(pid_t pid, int sig), 0)
+define_wasi_stub(void tzset(void),)
+
+define_wasi_stub(int execl(const char *path, const char *arg, ...), 0)
+define_wasi_stub(int execle(const char *path, const char *arg, ...), 0)
+define_wasi_stub(int execv(const char *path, char *const argv[]), 0)
+define_wasi_stub(int execve(const char *filename, char *const argv[], char *const envp[]), 0)
+define_wasi_stub(int getppid(), 0)
+define_wasi_stub(int system(const char *command), 0)
+
 #endif
 
 

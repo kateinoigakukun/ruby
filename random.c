@@ -62,10 +62,6 @@
 # include <AvailabilityMacros.h>
 #endif
 
-#ifdef __wasi__
-int getpid();
-#endif
-
 #include "internal.h"
 #include "internal/array.h"
 #include "internal/compilers.h"

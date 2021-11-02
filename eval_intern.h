@@ -33,8 +33,8 @@ pass_passed_block_handler(rb_execution_context_t *ec)
 #endif
 
 #include <stdio.h>
-#if defined(__wasm__)
-# include <wasm_setjmp.h>
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+# include <rb-wasm-support/setjmp.h>
 #else
 # include <setjmp.h>
 #endif

@@ -62,8 +62,8 @@
 #define VM_UNREACHABLE(func) UNREACHABLE
 #endif
 
-#if defined(__wasm__)
-# include <wasm_setjmp.h>
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+# include <rb-wasm-support/setjmp.h>
 #else
 # include <setjmp.h>
 #endif
@@ -857,14 +857,10 @@ enum rb_thread_status {
     THREAD_KILLED
 };
 
-#ifdef __wasi__
-typedef void *rb_jmpbuf_t[5];
-#else
 #ifdef RUBY_JMP_BUF
 typedef RUBY_JMP_BUF rb_jmpbuf_t;
 #else
 typedef void *rb_jmpbuf_t[5];
-#endif
 #endif
 
 /*

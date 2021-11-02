@@ -3770,9 +3770,6 @@ AS_CASE(["$target_os"],
 	  CFLAGS="$CFLAGS -std"
 	])
 	],
-    [wasi*], [
-     	THREAD_MODEL=none
-	],
     [cygwin*|msys*|mingw*], [
 	LIBRUBY_DLDFLAGS="${LIBRUBY_DLDFLAGS}"' -Wl,--out-implib=$(LIBRUBY)'
 	AS_CASE(["$target_os"],
@@ -3816,15 +3813,6 @@ AS_CASE(["$target_os"],
 MINIOBJS="$MINIDLNOBJ"
 
 RUBY_THREAD
-
-THREAD_IMPL_H=thread_$THREAD_MODEL.h
-AS_IF([test ! -f "$srcdir/$THREAD_IMPL_H"],
-      [AC_MSG_ERROR('$srcdir/$THREAD_IMPL_H' must be exist)])
-THREAD_IMPL_SRC=thread_$THREAD_MODEL.c
-AS_IF([test ! -f "$srcdir/$THREAD_IMPL_SRC"],
-      [AC_MSG_ERROR('$srcdir/$THREAD_IMPL_SRC' must be exist)])
-AC_DEFINE_UNQUOTED(THREAD_IMPL_H, ["$THREAD_IMPL_H"])
-AC_DEFINE_UNQUOTED(THREAD_IMPL_SRC, ["$THREAD_IMPL_SRC"])
 
 AC_ARG_ENABLE(debug-env,
        AS_HELP_STRING([--enable-debug-env], [enable RUBY_DEBUG environment variable]),
