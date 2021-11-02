@@ -33,7 +33,7 @@ pass_passed_block_handler(rb_execution_context_t *ec)
 #endif
 
 #include <stdio.h>
-#if defined(__wasm__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
 # include <wasm_setjmp.h>
 #else
 # include <setjmp.h>
@@ -155,12 +155,23 @@ rb_ec_tag_state(const rb_execution_context_t *ec)
 }
 
 NORETURN(static inline void rb_ec_tag_jump(const rb_execution_context_t *ec, enum ruby_tag_type st));
+
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+NORETURN(void rb_wasm_throw(int val));
+static inline void
+rb_ec_tag_jump(const rb_execution_context_t *ec, enum ruby_tag_type st)
+{
+    ec->tag->state = st;
+    rb_wasm_throw(1);
+}
+#else
 static inline void
 rb_ec_tag_jump(const rb_execution_context_t *ec, enum ruby_tag_type st)
 {
     ec->tag->state = st;
     ruby_longjmp(ec->tag->buf, 1);
 }
+#endif
 
 /*
   setjmp() in assignment expression rhs is undefined behavior
