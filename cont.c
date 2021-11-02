@@ -1227,6 +1227,10 @@ COMPILER_WARNING_IGNORED(-Wduplicate-decl-specifier)
 static VALUE
 cont_capture(volatile int *volatile stat)
 {
+#if defined(__wasi__)
+    fprintf(stderr, "INVALID CALL of cont_capture on WASI\n");
+    return Qundef;
+#else
     rb_context_t *volatile cont;
     rb_thread_t *th = GET_THREAD();
     volatile VALUE contval;
@@ -1287,6 +1291,7 @@ cont_capture(volatile int *volatile stat)
         *stat = 0;
         return contval;
     }
+#endif
 }
 COMPILER_WARNING_POP
 
