@@ -46,7 +46,7 @@
 #include "builtin.h"
 
 #if defined(__wasi__)
-void tzset() {}
+void tzset(void);
 #endif
 
 static ID id_submicro, id_nano_num, id_nano_den, id_offset, id_zone;

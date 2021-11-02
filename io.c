@@ -47,11 +47,12 @@
 #endif
 
 #if defined(__wasi__)
+
 int dup();
 int dup2();
-int pclose(FILE *stream) { return 0; }
-int pipe(int pipefd[2]) { return 0; }
-FILE *popen(const char *command, const char *type) { return 0; }
+int pclose(FILE *stream);
+int pipe(int pipefd[2]);
+FILE *popen(const char *command, const char *type);
 int shutdown(int, int);
 int chmod(const char *path, mode_t mode);
 int chown(const char *path, uid_t owner, gid_t group);
