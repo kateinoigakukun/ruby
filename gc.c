@@ -33,7 +33,7 @@ int getpid();
 #endif
 
 #if defined(__wasm__)
-# include <wasm_setjmp.h>
+# include <rb-wasm-support/setjmp.h>
 #else
 # include <setjmp.h>
 #endif

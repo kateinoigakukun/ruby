@@ -30,8 +30,16 @@
 # undef RUBY_DEBUG_ENV
 #endif
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+# include <rb-wasm-support/asyncify.h>
+# include <rb-wasm-support/setjmp.h>
+#endif
+
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+__attribute__((noinline))
+#endif
 int
-main(int argc, char **argv)
+rb_main(int argc, char **argv)
 {
 #ifdef RUBY_DEBUG_ENV
     ruby_set_debug_option(getenv("RUBY_DEBUG"));
@@ -46,4 +54,22 @@ main(int argc, char **argv)
 	ruby_init();
 	return ruby_run_node(ruby_options(argc, argv));
     }
+}
+
+int main(int argc, char **argv) {
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+  int result;
+  while (1) {
+    result = rb_main(argc, argv);
+    // NOTE: it's important to call 'asyncify_stop_unwind' here instead in rb_wasm_handle_jmp_unwind
+    // because unless that, Asyncify inserts another unwind check here and it unwinds to the root frame.
+    asyncify_stop_unwind();
+    if (!rb_wasm_handle_jmp_unwind()) {
+      break;
+    }
+  }
+  return result;
+#else
+  return rb_main(argc, argv);
+#endif
 }
