@@ -8,7 +8,7 @@ AC_ARG_WITH(thread,
         [mingw*], [
             THREAD_MODEL=win32
         ],
-        [wasi*],
+        [wasi*], [
             THREAD_MODEL=none
         ],
         [
