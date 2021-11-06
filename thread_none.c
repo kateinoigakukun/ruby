@@ -84,13 +84,22 @@ void rb_native_cond_timedwait(rb_nativethread_cond_t *cond,
 #define native_cleanup_push pthread_cleanup_push
 #define native_cleanup_pop pthread_cleanup_pop
 
-static pthread_key_t ruby_native_thread_key;
+static native_tls_key_t ruby_native_thread_key;
 
 rb_thread_t *ruby_thread_from_native(void) { return NULL; }
 
 int ruby_thread_set_native(rb_thread_t *th) { return 1; }
 
-void Init_native_thread(rb_thread_t *th) {}
+void Init_native_thread(rb_thread_t *th) {
+    ruby_native_thread_key = malloc(sizeof(struct native_tls_key));
+    if (!ruby_native_thread_key) {
+        rb_bug("malloc failed (ruby_native_thread_key)");
+    }
+    ruby_current_ec_key = malloc(sizeof(struct native_tls_key));
+    if (!ruby_current_ec_key) {
+        rb_bug("malloc failed (ruby_current_ec_key)");
+    }
+}
 
 #define USE_THREAD_CACHE 0
 

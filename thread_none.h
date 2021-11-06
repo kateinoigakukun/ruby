@@ -17,9 +17,9 @@ typedef struct rb_global_vm_lock_struct {
 } rb_global_vm_lock_t;
 
 
-typedef struct {
+typedef struct native_tls_key {
   void *value;
-}*native_tls_key_t;
+} *native_tls_key_t;
 
 RUBY_SYMBOL_EXPORT_BEGIN
   RUBY_EXTERN native_tls_key_t ruby_current_ec_key;
