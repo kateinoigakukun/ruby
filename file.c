@@ -155,6 +155,7 @@ int flock(int, int);
 
 #ifdef __wasi__
 #include <stdio.h>
+#include <errno.h>
 #define define_wasi_stub(fn, res) fn { \
   fprintf(stderr, "[wasi-stub] %s\n", __func__); \
   return res; \
@@ -170,11 +171,11 @@ define_wasi_stub(int umask(int mask), 0)
 define_wasi_stub(int chmod(const char *pathname, int mode), 0)
 define_wasi_stub(int chown(const char *pathname, int owner, int group), 0)
 
-define_wasi_stub(int pclose(FILE *stream), 0)
-define_wasi_stub(int pipe(int pipefd[2]), 0)
+define_wasi_stub(int pclose(FILE *stream), ENOTSUP)
+define_wasi_stub(int pipe(int pipefd[2]), ENOTSUP)
 define_wasi_stub(FILE *popen(const char *command, const char *type), NULL)
-define_wasi_stub(int dup(int oldfd), 0)
-define_wasi_stub(int dup2(int oldfd, int newfd), 0)
+define_wasi_stub(int dup(int oldfd), ENOTSUP)
+define_wasi_stub(int dup2(int oldfd, int newfd), ENOTSUP)
 
 define_wasi_stub(int kill(pid_t pid, int sig), 0)
 define_wasi_stub(void tzset(void),)
