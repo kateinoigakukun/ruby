@@ -28,10 +28,6 @@
 #include <sys/mman.h>
 #endif
 
-#ifdef __wasi__
-int getpid();
-#endif
-
 #if defined(__wasm__)
 # include <rb-wasm-support/setjmp.h>
 # include <rb-wasm-support/machine.h>

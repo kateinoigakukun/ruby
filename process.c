@@ -32,13 +32,12 @@
 
 #ifdef __wasi__
 # define WNOHANG 0
-int execl(const char *path, const char *arg, ...) { return 0; }
-int execle(const char *path, const char *arg, ...) { return 0; }
-int execv(const char *path, char *const argv[]) { return 0; }
-int execve(const char *filename, char *const argv[], char *const envp[]) { return 0; }
-int getpid();
-int getppid() { return 0; }
-int system() { return 0; }
+int execl(const char *path, const char *arg, ...);
+int execle(const char *path, const char *arg, ...);
+int execv(const char *path, char *const argv[]);
+int execve(const char *filename, char *const argv[], char *const envp[]);
+int getppid();
+int system(const char *command);
 uid_t geteuid(void);
 gid_t getegid(void);
 uid_t getuid(void);

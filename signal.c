@@ -46,8 +46,7 @@
 #include "ractor_core.h"
 
 #if defined(__wasi__)
-int kill(pid_t pid, int sig) { return 0; }
-int getpid() { return 0; }
+int kill(pid_t pid, int sig);
 #endif
 
 #ifdef NEED_RUBY_ATOMIC_OPS
