@@ -1,0 +1,102 @@
+name: WebAssembly
+on:
+  push:
+    paths-ignore:
+      - 'doc/**'
+      - '**.md'
+      - '**.rdoc'
+  pull_request:
+    paths-ignore:
+      - 'doc/**'
+      - '**.md'
+      - '**.rdoc'
+
+jobs:
+  make:
+    strategy:
+      matrix:
+        os: [macos-10.15]
+        test_task: [ "check", "test-bundler-parallel" ] #, "test-bundled-gems" ] matrix tests has unknown issues
+      fail-fast: false
+    env:
+      RUBY_TESTOPTS: '-q --tty=no'
+      GITPULLOPTIONS: --no-tags origin ${{github.ref}}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: mkdir build
+        working-directory:
+      - name: git config
+        run: |
+          git config --global advice.detachedHead 0
+          git config --global init.defaultBranch garbage
+      - uses: actions/checkout@v2
+        with:
+          path: src
+      - name: Install libraries
+        run: |
+          set -ex
+          brew upgrade
+          brew install autoconf automake
+
+          mkdir build-sdk
+          pushd build-sdk
+          curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-12/wasi-sdk-12.0-macos.tar.gz
+          tar xfz wasi-sdk-12.0-macos.tar.gz
+          curl -LO https://github.com/kateinoigakukun/rb-wasm-support/releases/download/0.2.0/rb-wasm-support-wasm32-unknown-wasi.tar.gz
+          tar xfz rb-wasm-support-wasm32-unknown-wasi.tar.gz
+
+        working-directory: src
+      - name: Set ENV
+        run: |
+          echo "MAKEFLAGS=-j$((1 + $(sysctl -n hw.activecpu)))" >> $GITHUB_ENV
+      - run: ./autogen.sh
+        working-directory: src
+      - name: Run configure
+        run: |
+          BUILD_SDK=$(PWD)/../src/build-sdk
+          ../src/configure --build arm64-apple-darwin \
+            --host wasm32-unknown-wasi \
+            --with-static-linked-ext \
+            --with-coroutine=none \
+            --disable-jit-support \
+            CC=$BUILD_SDK/wasi-sdk-12.0/bin/clang \
+            LD=$BUILD_SDK/wasi-sdk-12.0/bin/clang \
+            AR=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ar \
+            RANLIB=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ranlib \
+            LDFLAGS=" \
+              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
+              -L$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot/lib/wasm32-wasi \
+              -L$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/lib \
+              -lwasi-emulated-mman \
+              -lwasi-emulated-signal \
+              -lrb_wasm_support \
+              -Xlinker --stack-first \
+              -Xlinker -z -Xlinker stack-size=16777216 \
+            " \
+            CFLAGS=" \
+              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
+              -I$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/include \
+              -D_WASI_EMULATED_SIGNAL \
+              -D_WASI_EMULATED_MMAN \
+              -DRB_WASM_SUPPORT_EMULATE_SETJMP \
+            " \
+            optflags="-O0 -g"
+      - run: make miniruby
+      - uses: actions/upload-artifact@v2
+        with:
+          name: miniruby
+          path: build/miniruby
+      - run: brew install wasmtime binaryen
+      - name: Asyncify
+        run: wasm-opt miniruby --asyncify -g -O --pass-arg=asyncify-ignore-imports -o miniruby.asyncified
+      - uses: actions/upload-artifact@v2
+        with:
+          name: miniruby.asyncified
+          path: build/miniruby.asyncified
+      - name: Run basictest
+        run: wasmtime run ./../build/miniruby.asyncified --mapdir /::./ -- /basictest/test.rb
+        working-directory: src
+
+defaults:
+  run:
+    working-directory: build
