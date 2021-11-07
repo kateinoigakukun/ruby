@@ -12,16 +12,36 @@ on:
       - '**.rdoc'
 
 jobs:
+  build-wasi-libc:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: WebAssembly/wasi-libc
+          ref: ad5133410f66b93a2381db5b542aad5e0964db96
+          submodules: true
+          path: build
+      - name: Install clang
+        run: |
+          curl -sSfL https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz | tar xJf -
+          export CLANG_DIR=$(pwd)/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-20.04/bin
+          echo "$CLANG_DIR" >> $GITHUB_PATH
+          echo "WASM_CC=$CLANG_DIR/clang" >> $GITHUB_ENV
+      - run: make -j4
+      - uses: actions/upload-artifact@v1
+        with:
+          name: wasi-libc
+          path: build/sysroot
   make:
     strategy:
       matrix:
         os: [macos-10.15]
-        test_task: [ "check", "test-bundler-parallel" ] #, "test-bundled-gems" ] matrix tests has unknown issues
       fail-fast: false
     env:
       RUBY_TESTOPTS: '-q --tty=no'
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
     runs-on: ${{ matrix.os }}
+    needs: [build-wasi-libc]
     steps:
       - run: mkdir build
         working-directory:
@@ -44,8 +64,11 @@ jobs:
           tar xfz wasi-sdk-12.0-macos.tar.gz
           curl -LO https://github.com/kateinoigakukun/rb-wasm-support/releases/download/0.2.0/rb-wasm-support-wasm32-unknown-wasi.tar.gz
           tar xfz rb-wasm-support-wasm32-unknown-wasi.tar.gz
-
         working-directory: src
+      - uses: actions/download-artifact@v2
+        with:
+          name: wasi-libc
+          path: src/build-sdk/wasi-sysroot
       - name: Set ENV
         run: |
           echo "MAKEFLAGS=-j$((1 + $(sysctl -n hw.activecpu)))" >> $GITHUB_ENV
@@ -64,20 +87,24 @@ jobs:
             AR=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ar \
             RANLIB=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ranlib \
             LDFLAGS=" \
-              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
-              -L$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot/lib/wasm32-wasi \
+              --sysroot=$BUILD_SDK/wasi-sysroot \
+              -L$BUILD_SDK/wasi-sysroot/lib/wasm32-wasi \
               -L$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/lib \
               -lwasi-emulated-mman \
               -lwasi-emulated-signal \
+              -lwasi-emulated-getpid \
+              -lwasi-emulated-process-clocks \
               -lrb_wasm_support \
               -Xlinker --stack-first \
               -Xlinker -z -Xlinker stack-size=16777216 \
             " \
             CFLAGS=" \
-              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
+              --sysroot=$BUILD_SDK/wasi-sysroot \
               -I$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/include \
               -D_WASI_EMULATED_SIGNAL \
               -D_WASI_EMULATED_MMAN \
+              -D_WASI_EMULATED_GETPID \
+              -D_WASI_EMULATED_PROCESS_CLOCKS \
               -DRB_WASM_SUPPORT_EMULATE_SETJMP \
             " \
             optflags="-O0 -g"
