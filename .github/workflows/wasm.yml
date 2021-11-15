@@ -30,12 +30,16 @@ jobs:
   make:
     strategy:
       matrix:
-        os: [macos-10.15]
+        entry:
+          - { name: O0-debuginfo, optflags: "-O0", debugflags: "-g" }
+          - { name: O1,           optflags: "-O1", debugflags: ""   }
+          - { name: O2,           optflags: "-O2", debugflags: ""   }
+          - { name: O3,           optflags: "-O3", debugflags: ""   }
       fail-fast: false
     env:
       RUBY_TESTOPTS: '-q --tty=no'
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-10.15
     needs: [build-wasi-libc]
     steps:
       - run: mkdir build
@@ -102,7 +106,9 @@ jobs:
               -D_WASI_EMULATED_PROCESS_CLOCKS \
               -DRB_WASM_SUPPORT_EMULATE_SETJMP \
             " \
-            optflags="-O0 -g"
+            optflags="${{ matrix.entry.optflags }}" \
+            debugflags="${{ matrix.entry.debugflags }}"
+
       - run: make miniruby
       - uses: actions/upload-artifact@v2
         with:
