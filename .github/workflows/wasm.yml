@@ -112,17 +112,28 @@ jobs:
       - run: make miniruby
       - uses: actions/upload-artifact@v2
         with:
-          name: miniruby
+          name: miniruby-raw-${{ matrix.entry.name }}
           path: build/miniruby
-      - run: brew install wasmtime binaryen
-      - name: Asyncify
-        run: wasm-opt miniruby --asyncify -g -O --pass-arg=asyncify-ignore-imports -o miniruby.asyncified
+      - run: make ruby
       - uses: actions/upload-artifact@v2
         with:
-          name: miniruby.asyncified
-          path: build/miniruby.asyncified
+          name: ruby-raw-${{ matrix.entry.name }}
+          path: build/ruby
+      - run: brew install wasmtime binaryen
+      - name: Asyncify
+        run: |
+          wasm-opt miniruby --asyncify -g -O --pass-arg=asyncify-ignore-imports -o miniruby.wasm
+          wasm-opt ruby --asyncify -g -O --pass-arg=asyncify-ignore-imports -o ruby.wasm
+      - uses: actions/upload-artifact@v2
+        with:
+          name: miniruby.wasm
+          path: build/miniruby.wasm
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ruby.wasm
+          path: build/ruby.wasm
       - name: Run basictest
-        run: wasmtime run ./../build/miniruby.asyncified --mapdir /::./ -- /basictest/test.rb
+        run: wasmtime run ./../build/miniruby.wasm --mapdir /::./ -- /basictest/test.rb
         working-directory: src
 
 defaults:
