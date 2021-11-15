@@ -157,7 +157,6 @@ int flock(int, int);
 #include <stdio.h>
 #include <errno.h>
 #define define_wasi_stub(fn, res) fn { \
-  fprintf(stderr, "[wasi-stub] %s\n", __func__); \
   return res; \
 }
 // FIXME(katei): disable these uses
