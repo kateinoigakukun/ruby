@@ -627,10 +627,11 @@ assert_equal '2', %q{
   end
 }
 
-assert_match /invalid multibyte char/, %q{
-  STDERR.reopen(STDOUT)
-  eval("\"\xf0".force_encoding("utf-8"))
-}, '[ruby-dev:32429]'
+# TODO(katei): WASI doesn't support dup syscall
+# assert_match /invalid multibyte char/, %q{
+#   STDERR.reopen(STDOUT)
+#   eval("\"\xf0".force_encoding("utf-8"))
+# }, '[ruby-dev:32429]'
 
 # method ! and !=
 assert_equal 'true', %q{!false}

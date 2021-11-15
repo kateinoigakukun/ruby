@@ -62,6 +62,7 @@ int main(int argc, char **argv) {
   int result;
   void *asyncify_buf;
 
+  bool new_fiber_started = false;
   void *arg0 = NULL, *arg1 = NULL;
   void (*fiber_entry_point)(void *, void *) = NULL;
   void (*old_entry_point)(void *, void *);
@@ -76,6 +77,7 @@ int main(int argc, char **argv) {
     // NOTE: it's important to call 'asyncify_stop_unwind' here instead in rb_wasm_handle_jmp_unwind
     // because unless that, Asyncify inserts another unwind check here and it unwinds to the root frame.
     asyncify_stop_unwind();
+
     if ((asyncify_buf = rb_wasm_handle_jmp_unwind()) != NULL) {
       asyncify_start_rewind(asyncify_buf);
       continue;
@@ -86,11 +88,11 @@ int main(int argc, char **argv) {
     }
 
     old_entry_point = fiber_entry_point;
-    asyncify_buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1);
+    asyncify_buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1, &new_fiber_started);
     if (asyncify_buf) {
       asyncify_start_rewind(asyncify_buf);
       continue;
-    } else if (old_entry_point != fiber_entry_point) {
+    } else if (new_fiber_started) {
       continue;
     }
 
