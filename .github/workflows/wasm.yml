@@ -80,7 +80,7 @@ jobs:
           ../src/configure --build arm64-apple-darwin \
             --host wasm32-unknown-wasi \
             --with-static-linked-ext \
-            --with-coroutine=none \
+            --with-coroutine=asyncify \
             --disable-jit-support \
             CC=$BUILD_SDK/wasi-sdk-12.0/bin/clang \
             LD=$BUILD_SDK/wasi-sdk-12.0/bin/clang \

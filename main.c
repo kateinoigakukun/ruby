@@ -33,6 +33,7 @@
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)
 # include <rb-wasm-support/asyncify.h>
 # include <rb-wasm-support/setjmp.h>
+# include <rb-wasm-support/fiber.h>
 #endif
 
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)
@@ -59,20 +60,40 @@ rb_main(int argc, char **argv)
 int main(int argc, char **argv) {
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)
   int result;
-  jmp_buf *buf;
+  void *asyncify_buf;
+
+  void *arg0 = NULL, *arg1 = NULL;
+  void (*fiber_entry_point)(void *, void *) = NULL;
+  void (*old_entry_point)(void *, void *);
+
   while (1) {
-    result = rb_main(argc, argv);
+    if (fiber_entry_point) {
+      fiber_entry_point(arg0, arg1);
+    } else {
+      result = rb_main(argc, argv);
+    }
+
     // NOTE: it's important to call 'asyncify_stop_unwind' here instead in rb_wasm_handle_jmp_unwind
     // because unless that, Asyncify inserts another unwind check here and it unwinds to the root frame.
     asyncify_stop_unwind();
-    if ((buf = rb_wasm_handle_jmp_unwind()) != NULL) {
-      asyncify_start_rewind(buf);
+    if ((asyncify_buf = rb_wasm_handle_jmp_unwind()) != NULL) {
+      asyncify_start_rewind(asyncify_buf);
       continue;
     }
-    if ((buf = rb_asyncify_get_active_buf()) != NULL) {
-      asyncify_start_rewind(buf);
+    if ((asyncify_buf = rb_asyncify_get_active_buf()) != NULL) {
+      asyncify_start_rewind(asyncify_buf);
       continue;
     }
+
+    old_entry_point = fiber_entry_point;
+    asyncify_buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1);
+    if (asyncify_buf) {
+      asyncify_start_rewind(asyncify_buf);
+      continue;
+    } else if (old_entry_point != fiber_entry_point) {
+      continue;
+    }
+
     break;
   }
   return result;
