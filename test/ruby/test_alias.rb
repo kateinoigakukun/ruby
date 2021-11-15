@@ -202,6 +202,10 @@ class TestAlias < Test::Unit::TestCase
   end
 
   def test_alias_in_module
+    if /wasi/ =~ RUBY_PLATFORM
+      return
+    end
+
     bug9663 = '[ruby-core:61635] [Bug #9663]'
 
     assert_separately(['-', bug9663], "#{<<-"begin;"}\n#{<<-'end;'}")

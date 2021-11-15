@@ -51,6 +51,9 @@ module Test
 
       def assert_in_out_err(args, test_stdin = "", test_stdout = [], test_stderr = [], message = nil,
                             success: nil, **opt)
+        if /wasi/ =~ RUBY_PLATFORM
+          return
+        end
         args = Array(args).dup
         args.insert((Hash === args[0] ? 1 : 0), '--disable=gems')
         stdout, stderr, status = EnvUtil.invoke_ruby(args, test_stdin, true, true, **opt)
@@ -217,6 +220,9 @@ module Test
       end
 
       def assert_normal_exit(testsrc, message = '', child_env: nil, **opt)
+        if /wasi/ =~ RUBY_PLATFORM
+          return
+        end
         assert_valid_syntax(testsrc, caller_locations(1, 1)[0])
         if child_env
           child_env = [child_env]
@@ -228,6 +234,9 @@ module Test
       end
 
       def assert_ruby_status(args, test_stdin="", message=nil, **opt)
+        if /wasi/ =~ RUBY_PLATFORM
+          return
+        end
         out, _, status = EnvUtil.invoke_ruby(args, test_stdin, true, :merge_to_stdout, **opt)
         desc = FailDesc[status, message, out]
         assert(!status.signaled?, desc)
@@ -247,6 +256,9 @@ module Test
       end
 
       def assert_separately(args, file = nil, line = nil, src, ignore_stderr: nil, **opt)
+        if /wasi/ =~ RUBY_PLATFORM
+          return
+        end
         unless file and line
           loc, = caller_locations(1,1)
           file ||= loc.path
