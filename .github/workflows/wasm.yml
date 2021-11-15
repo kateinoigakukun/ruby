@@ -135,6 +135,11 @@ jobs:
       - name: Run basictest
         run: wasmtime run ./../build/miniruby.wasm --mapdir /::./ -- /basictest/test.rb
         working-directory: src
+      - name: Run bootstraptest (no thread)
+        run: |
+          NO_THREAD_TESTS="$(grep -L Thread -R ./bootstraptest | cut -d: -f1 | uniq | xargs basename | grep -e '^test_.*.rb$' | sed 's/test_\(.*\).rb/\1/' | paste -s -d, -)"
+          ruby ./bootstraptest/runner.rb --ruby="$(which wasmtime) run $PWD/../build/ruby --mapdir /::./ -- " -j6 --verbose "--sets=$NO_THREAD_TESTS"
+        working-directory: src
 
 defaults:
   run:
