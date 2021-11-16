@@ -76,15 +76,19 @@ jobs:
             debugflags="${{ matrix.entry.debugflags }}"
 
       - run: make miniruby
+      - run: make ruby
+      - run: brew install binaryen
+      - run: |
+          wasm-opt miniruby ${{ matrix.entry.debugflags }} ${{ matrix.entry.optflags }} -o miniruby.wasm
+          wasm-opt ruby ${{ matrix.entry.debugflags }} ${{ matrix.entry.optflags }} -o ruby.wasm
       - uses: actions/upload-artifact@v2
         with:
           name: miniruby-${{ matrix.entry.name }}
-          path: build/miniruby
-      - run: make ruby
+          path: build/miniruby.wasm
       - uses: actions/upload-artifact@v2
         with:
           name: ruby-${{ matrix.entry.name }}
-          path: build/ruby
+          path: build/ruby.wasm
 
 defaults:
   run:
