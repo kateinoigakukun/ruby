@@ -1,0 +1,91 @@
+name: WebAssembly
+on:
+  push:
+    paths-ignore:
+      - 'doc/**'
+      - '**.md'
+      - '**.rdoc'
+
+jobs:
+  make:
+    strategy:
+      matrix:
+        entry:
+          - { name: O0-debuginfo, optflags: "-O0", debugflags: "-g" }
+          - { name: O1,           optflags: "-O1", debugflags: ""   }
+          - { name: O2,           optflags: "-O2", debugflags: ""   }
+          - { name: O3,           optflags: "-O3", debugflags: ""   }
+      fail-fast: false
+    env:
+      RUBY_TESTOPTS: '-q --tty=no'
+      GITPULLOPTIONS: --no-tags origin ${{github.ref}}
+    runs-on: macos-10.15
+    steps:
+      - run: mkdir build
+        working-directory:
+      - name: git config
+        run: |
+          git config --global advice.detachedHead 0
+          git config --global init.defaultBranch garbage
+      - uses: actions/checkout@v2
+        with:
+          path: src
+      - name: Install libraries
+        run: |
+          set -ex
+          brew upgrade
+          brew install autoconf automake
+
+          mkdir build-sdk
+          pushd build-sdk
+          curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-12/wasi-sdk-12.0-macos.tar.gz
+          tar xfz wasi-sdk-12.0-macos.tar.gz
+          curl -LO https://github.com/kateinoigakukun/rb-wasm-support/releases/download/0.1.0/try_catch.S.o
+        working-directory: src
+      - name: Set ENV
+        run: |
+          echo "MAKEFLAGS=-j$((1 + $(sysctl -n hw.activecpu)))" >> $GITHUB_ENV
+      - run: ./autogen.sh
+        working-directory: src
+      - name: Run configure
+        run: |
+          BUILD_SDK=$(PWD)/../src/build-sdk
+          ../src/configure \
+            --host wasm32-unknown-wasi \
+            --with-static-linked-ext \
+            --with-coroutine=none \
+            --disable-jit-support \
+            CC=$BUILD_SDK/wasi-sdk-12.0/bin/clang \
+            LD=$BUILD_SDK/wasi-sdk-12.0/bin/clang \
+            AR=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ar \
+            RANLIB=$BUILD_SDK/wasi-sdk-12.0/bin/llvm-ranlib \
+            LDFLAGS=" \
+              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
+              -L$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot/lib/wasm32-wasi \
+              -lwasi-emulated-mman \
+              -lwasi-emulated-signal \
+              $BUILD_SDK/try_catch.S.o
+            " \
+            CFLAGS=" \
+              --sysroot=$BUILD_SDK/wasi-sdk-12.0/share/wasi-sysroot \
+              -D_WASI_EMULATED_SIGNAL \
+              -D_WASI_EMULATED_MMAN \
+              -mexception-handling \
+            " \
+            optflags="${{ matrix.entry.optflags }}" \
+            debugflags="${{ matrix.entry.debugflags }}"
+
+      - run: make miniruby
+      - uses: actions/upload-artifact@v2
+        with:
+          name: miniruby-${{ matrix.entry.name }}
+          path: build/miniruby
+      - run: make ruby
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ruby-${{ matrix.entry.name }}
+          path: build/ruby
+
+defaults:
+  run:
+    working-directory: build
