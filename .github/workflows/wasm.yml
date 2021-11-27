@@ -7,26 +7,6 @@ on:
       - '**.rdoc'
 
 jobs:
-  build-wasi-libc:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          repository: WebAssembly/wasi-libc
-          ref: ad5133410f66b93a2381db5b542aad5e0964db96
-          submodules: true
-          path: build
-      - name: Install clang
-        run: |
-          curl -sSfL https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-20.04.tar.xz | tar xJf -
-          export CLANG_DIR=$(pwd)/clang+llvm-12.0.0-x86_64-linux-gnu-ubuntu-20.04/bin
-          echo "$CLANG_DIR" >> $GITHUB_PATH
-          echo "WASM_CC=$CLANG_DIR/clang" >> $GITHUB_ENV
-      - run: make -j4
-      - uses: actions/upload-artifact@v1
-        with:
-          name: wasi-libc
-          path: build/sysroot
   make:
     strategy:
       matrix:
@@ -44,7 +24,6 @@ jobs:
       RUBY_TESTOPTS: '-q --tty=no'
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
     runs-on: macos-10.15
-    needs: [build-wasi-libc]
     steps:
       - run: mkdir build
         working-directory:
@@ -67,11 +46,9 @@ jobs:
           tar xfz wasi-sdk-12.0-macos.tar.gz
           curl -LO https://github.com/kateinoigakukun/rb-wasm-support/releases/download/0.4.0/rb-wasm-support-wasm32-unknown-wasi.tar.gz
           tar xfz rb-wasm-support-wasm32-unknown-wasi.tar.gz
+          curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-14/wasi-sysroot-14.0.tar.gz
+          tar xfz wasi-sysroot-14.0.tar.gz
         working-directory: src
-      - uses: actions/download-artifact@v2
-        with:
-          name: wasi-libc
-          path: src/build-sdk/wasi-sysroot
       - name: Set ENV
         run: |
           echo "MAKEFLAGS=-j$((1 + $(sysctl -n hw.activecpu)))" >> $GITHUB_ENV
