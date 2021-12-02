@@ -37,93 +37,121 @@
 
 RUBY_EXTERN rb_serial_t ruby_vm_global_cvar_state;
 
-void
-rb_class_subclass_add(VALUE super, VALUE klass)
+static rb_subclass_entry_t *
+push_subclass_entry_to_list(VALUE super, VALUE klass)
 {
     rb_subclass_entry_t *entry, *head;
 
+    entry = ZALLOC(rb_subclass_entry_t);
+    entry->klass = klass;
+
+    head = RCLASS_SUBCLASSES(super);
+    if (!head) {
+        head = ZALLOC(rb_subclass_entry_t);
+        RCLASS_SUBCLASSES(super) = head;
+    }
+    entry->next = head->next;
+    entry->prev = head;
+
+    if (head->next) {
+        head->next->prev = entry;
+    }
+    head->next = entry;
+
+    return entry;
+}
+
+void
+rb_class_subclass_add(VALUE super, VALUE klass)
+{
     if (super && super != Qundef) {
-	entry = ALLOC(rb_subclass_entry_t);
-	entry->klass = klass;
-	entry->next = NULL;
-
-	head = RCLASS_SUBCLASSES(super);
-	if (head) {
-	    entry->next = head;
-	    RCLASS_PARENT_SUBCLASSES(head->klass) = &entry->next;
-	}
-
-	RCLASS_SUBCLASSES(super) = entry;
-	RCLASS_PARENT_SUBCLASSES(klass) = &RCLASS_SUBCLASSES(super);
+        rb_subclass_entry_t *entry = push_subclass_entry_to_list(super, klass);
+        RCLASS_SUBCLASS_ENTRY(klass) = entry;
     }
 }
 
 static void
 rb_module_add_to_subclasses_list(VALUE module, VALUE iclass)
 {
-    rb_subclass_entry_t *entry, *head;
+    rb_subclass_entry_t *entry = push_subclass_entry_to_list(module, iclass);
+    RCLASS_MODULE_SUBCLASS_ENTRY(iclass) = entry;
+}
 
-    entry = ALLOC(rb_subclass_entry_t);
-    entry->klass = iclass;
-    entry->next = NULL;
+void
+rb_class_remove_subclass_head(VALUE klass)
+{
+    rb_subclass_entry_t *head = RCLASS_SUBCLASSES(klass);
 
-    head = RCLASS_SUBCLASSES(module);
     if (head) {
-	entry->next = head;
-	RCLASS_MODULE_SUBCLASSES(head->klass) = &entry->next;
+        if (head->next) {
+            head->next->prev = NULL;
+        }
+        RCLASS_SUBCLASSES(klass) = NULL;
+        xfree(head);
     }
-
-    RCLASS_SUBCLASSES(module) = entry;
-    RCLASS_MODULE_SUBCLASSES(iclass) = &RCLASS_SUBCLASSES(module);
 }
 
 void
 rb_class_remove_from_super_subclasses(VALUE klass)
 {
-    rb_subclass_entry_t **prev = RCLASS_PARENT_SUBCLASSES(klass);
+    rb_subclass_entry_t *entry = RCLASS_SUBCLASS_ENTRY(klass);
 
-    if (prev) {
-	rb_subclass_entry_t *entry = *prev, *next = entry->next;
+    if (entry) {
+        rb_subclass_entry_t *prev = entry->prev, *next = entry->next;
 
-	*prev = next;
-	if (next) {
-	    RCLASS_PARENT_SUBCLASSES(next->klass) = prev;
-	}
+        if (prev) {
+            prev->next = next;
+        }
+        if (next) {
+            next->prev = prev;
+        }
+
 	xfree(entry);
     }
 
-    RCLASS_PARENT_SUBCLASSES(klass) = NULL;
+    RCLASS_SUBCLASS_ENTRY(klass) = NULL;
 }
 
 void
 rb_class_remove_from_module_subclasses(VALUE klass)
 {
-    rb_subclass_entry_t **prev = RCLASS_MODULE_SUBCLASSES(klass);
+    rb_subclass_entry_t *entry = RCLASS_MODULE_SUBCLASS_ENTRY(klass);
 
-    if (prev) {
-        rb_subclass_entry_t *entry = *prev, *next = entry->next;
+    if (entry) {
+        rb_subclass_entry_t *prev = entry->prev, *next = entry->next;
 
-	*prev = next;
+        if (prev) {
+            prev->next = next;
+        }
 	if (next) {
-	    RCLASS_MODULE_SUBCLASSES(next->klass) = prev;
+            next->prev = prev;
 	}
 
 	xfree(entry);
     }
 
-    RCLASS_MODULE_SUBCLASSES(klass) = NULL;
+    RCLASS_MODULE_SUBCLASS_ENTRY(klass) = NULL;
 }
 
 void
 rb_class_foreach_subclass(VALUE klass, void (*f)(VALUE, VALUE), VALUE arg)
 {
+    // RCLASS_SUBCLASSES should always point to our head element which has NULL klass
     rb_subclass_entry_t *cur = RCLASS_SUBCLASSES(klass);
+    // if we have a subclasses list, then the head is a placeholder with no valid
+    // class. So ignore it and use the next element in the list (if one exists)
+    if (cur) {
+        RUBY_ASSERT(!cur->klass);
+        cur = cur->next;
+    }
 
     /* do not be tempted to simplify this loop into a for loop, the order of
        operations is important here if `f` modifies the linked list */
     while (cur) {
 	VALUE curklass = cur->klass;
 	cur = cur->next;
+        // do not trigger GC during f, otherwise the cur will become
+        // a dangling pointer if the subclass is collected
 	f(curklass, arg);
     }
 }
@@ -176,7 +204,7 @@ class_alloc(VALUE flags, VALUE klass)
     RVARGC_NEWOBJ_OF(obj, struct RClass, klass, (flags & T_MASK) | FL_PROMOTED1 /* start from age == 2 */ | (RGENGC_WB_PROTECTED_CLASS ? FL_WB_PROTECTED : 0), alloc_size);
 
 #if USE_RVARGC
-    obj->ptr = (rb_classext_t *)((char *)obj + sizeof(struct RClass));
+    memset(RCLASS_EXT(obj), 0, sizeof(rb_classext_t));
 #else
     obj->ptr = ZALLOC(rb_classext_t);
 #endif
@@ -963,6 +991,12 @@ rb_include_module(VALUE klass, VALUE module)
 
     if (RB_TYPE_P(klass, T_MODULE)) {
         rb_subclass_entry_t *iclass = RCLASS_SUBCLASSES(klass);
+        // skip the placeholder subclass entry at the head of the list
+        if (iclass && iclass->next) {
+            RUBY_ASSERT(!iclass->klass);
+            iclass = iclass->next;
+        }
+
         int do_include = 1;
         while (iclass) {
             VALUE check_class = iclass->klass;
@@ -1202,6 +1236,12 @@ rb_prepend_module(VALUE klass, VALUE module)
     }
     if (RB_TYPE_P(klass, T_MODULE)) {
         rb_subclass_entry_t *iclass = RCLASS_SUBCLASSES(klass);
+        // skip the placeholder subclass entry at the head of the list if it exists
+        if (iclass && iclass->next) {
+            RUBY_ASSERT(!iclass->klass);
+            iclass = iclass->next;
+        }
+
         VALUE klass_origin = RCLASS_ORIGIN(klass);
         struct rb_id_table *klass_m_tbl = RCLASS_M_TBL(klass);
         struct rb_id_table *klass_origin_m_tbl = RCLASS_M_TBL(klass_origin);
@@ -1334,13 +1374,57 @@ rb_mod_ancestors(VALUE mod)
     return ary;
 }
 
-static void
-class_descendants_recursive(VALUE klass, VALUE ary)
+struct subclass_traverse_data
 {
+    VALUE buffer;
+    long count;
+    long maxcount;
+    bool immediate_only;
+};
+
+static void
+class_descendants_recursive(VALUE klass, VALUE v)
+{
+    struct subclass_traverse_data *data = (struct subclass_traverse_data *) v;
+
     if (BUILTIN_TYPE(klass) == T_CLASS && !FL_TEST(klass, FL_SINGLETON)) {
-        rb_ary_push(ary, klass);
+        if (data->buffer && data->count < data->maxcount && !rb_objspace_garbage_object_p(klass)) {
+            // assumes that this does not cause GC as long as the length does not exceed the capacity
+            rb_ary_push(data->buffer, klass);
+        }
+        data->count++;
+        if (!data->immediate_only) {
+            rb_class_foreach_subclass(klass, class_descendants_recursive, v);
+        }
     }
-    rb_class_foreach_subclass(klass, class_descendants_recursive, ary);
+    else {
+        rb_class_foreach_subclass(klass, class_descendants_recursive, v);
+    }
+}
+
+static VALUE
+class_descendants(VALUE klass, bool immediate_only)
+{
+    struct subclass_traverse_data data = { Qfalse, 0, -1, immediate_only };
+
+    // estimate the count of subclasses
+    rb_class_foreach_subclass(klass, class_descendants_recursive, (VALUE) &data);
+
+    // the following allocation may cause GC which may change the number of subclasses
+    data.buffer = rb_ary_new_capa(data.count);
+    data.maxcount = data.count;
+    data.count = 0;
+
+    size_t gc_count = rb_gc_count();
+
+    // enumerate subclasses
+    rb_class_foreach_subclass(klass, class_descendants_recursive, (VALUE) &data);
+
+    if (gc_count != rb_gc_count()) {
+        rb_bug("GC must not occur during the subclass iteration of Class#descendants");
+    }
+
+    return data.buffer;
 }
 
 /*
@@ -1364,9 +1448,32 @@ class_descendants_recursive(VALUE klass, VALUE ary)
 VALUE
 rb_class_descendants(VALUE klass)
 {
-    VALUE ary = rb_ary_new();
-    rb_class_foreach_subclass(klass, class_descendants_recursive, ary);
-    return ary;
+    return class_descendants(klass, false);
+}
+
+
+/*
+ *  call-seq:
+ *     subclasses -> array
+ *
+ *  Returns an array of classes where the receiver is the
+ *  direct superclass of the class, excluding singleton classes.
+ *  The order of the returned array is not defined.
+ *
+ *     class A; end
+ *     class B < A; end
+ *     class C < B; end
+ *     class D < A; end
+ *
+ *     A.subclasses        #=> [D, B]
+ *     B.subclasses        #=> [C]
+ *     C.subclasses        #=> []
+ */
+
+VALUE
+rb_class_subclasses(VALUE klass)
+{
+    return class_descendants(klass, true);
 }
 
 static void

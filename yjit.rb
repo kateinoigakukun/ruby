@@ -149,6 +149,10 @@ module RubyVM::YJIT
     Primitive.cexpr! 'rb_yjit_enabled_p() ? Qtrue : Qfalse'
   end
 
+  def self.simulate_oom!
+    Primitive.simulate_oom_bang
+  end
+
   # Avoid calling a method here to not interfere with compilation tests
   if Primitive.yjit_stats_enabled_p
     at_exit { _print_stats }
@@ -189,8 +193,12 @@ module RubyVM::YJIT
       total_insns_count = retired_in_yjit + stats[:vm_insns_count]
       yjit_ratio_pct = 100.0 * retired_in_yjit.to_f / total_insns_count
 
+      # Number of failed compiler invocations
+      compilation_failure = stats[:compilation_failure]
+
       $stderr.puts "bindings_allocations:  " + ("%10d" % stats[:binding_allocations])
       $stderr.puts "bindings_set:          " + ("%10d" % stats[:binding_set])
+      $stderr.puts "compilation_failure:   " + ("%10d" % compilation_failure) if compilation_failure != 0
       $stderr.puts "compiled_iseq_count:   " + ("%10d" % stats[:compiled_iseq_count])
       $stderr.puts "compiled_block_count:  " + ("%10d" % stats[:compiled_block_count])
       $stderr.puts "invalidation_count:    " + ("%10d" % stats[:invalidation_count])

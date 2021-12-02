@@ -1107,6 +1107,18 @@ main()
 		    RUBY_APPEND_OPTIONS(CXXFLAGS, -U_XOPEN_SOURCE)
 		  ])
 		])
+		AC_CHECK_TYPES([caddr_t],[],[],[@%:@include <sys/types.h>])
+		AC_CACHE_CHECK([whether madvise declaration is needed], rb_cv_madvice_prototype_using_caddr_t,
+		  [RUBY_WERROR_FLAG([AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+		    @%:@include <sys/unistd.h>
+		    @%:@include <sys/mman.h>
+		    @%:@include <sys/types.h>
+		    extern int madvise(caddr_t, size_t, int);
+		    ]], [[]])],
+		    [rb_cv_madvice_prototype_using_caddr_t=yes], [rb_cv_madvice_prototype_using_caddr_t=no])
+		  ])
+		])
+		AS_IF([test $rb_cv_madvice_prototype_using_caddr_t = yes], [AC_DEFINE(NEED_MADVICE_PROTOTYPE_USING_CADDR_T, 1)])
 		],
 [haiku*], [
 		LIBS="$LIBS" # m lib is include in root
@@ -3472,7 +3484,13 @@ AS_CASE("$enable_shared", [yes], [
 	LIBRUBY_SONAME='lib$(RUBY_SO_NAME).$(SOEXT).$(RUBY_PROGRAM_VERSION)'
 	LIBRUBY_ALIASES='$(LIBRUBY_SONAME) lib$(RUBY_SO_NAME).$(SOEXT)'
 	RUBY_APPEND_OPTIONS(LIBRUBY_DLDFLAGS, ["${linker_flag}-h${linker_flag:+,}"'$(@F)'])
-	XLDFLAGS="$XLDFLAGS "'-R${libdir}'
+	AS_IF([test "$load_relative" = yes], [
+	    libprefix="'\$\$ORIGIN/../${libdir_basename}'"
+	    LIBRUBY_RPATHFLAGS="-R${libprefix}"
+	    LIBRUBY_RELATIVE=yes
+	], [
+	    LIBRUBY_RPATHFLAGS='-R${libdir}'
+	])
 	],
     [hpux*], [
 	XLDFLAGS="$XLDFLAGS "'-Wl,+s,+b,$(libdir)'

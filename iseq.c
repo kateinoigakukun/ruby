@@ -272,6 +272,9 @@ rb_iseq_update_references(rb_iseq_t *iseq)
         if (body->parent_iseq) {
             body->parent_iseq = (struct rb_iseq_struct *)rb_gc_location((VALUE)body->parent_iseq);
         }
+        if (body->mandatory_only_iseq) {
+            body->mandatory_only_iseq = (struct rb_iseq_struct *)rb_gc_location((VALUE)body->mandatory_only_iseq);
+        }
         if (body->call_data) {
             for (unsigned int i=0; i<body->ci_size; i++) {
                 struct rb_call_data *cds = body->call_data;
@@ -351,6 +354,7 @@ rb_iseq_mark(const rb_iseq_t *iseq)
         rb_gc_mark_movable(body->location.label);
         rb_gc_mark_movable(body->location.base_label);
         rb_gc_mark_movable(body->location.pathobj);
+        RUBY_MARK_MOVABLE_UNLESS_NULL((VALUE)body->mandatory_only_iseq);
         RUBY_MARK_MOVABLE_UNLESS_NULL((VALUE)body->parent_iseq);
 
         if (body->call_data) {
@@ -362,12 +366,17 @@ rb_iseq_mark(const rb_iseq_t *iseq)
                 if (vm_ci_markable(ci)) {
                     rb_gc_mark_movable((VALUE)ci);
                 }
-                if (cc && vm_cc_markable(cc)) {
-                    if (!vm_cc_invalidated_p(cc)) {
-                        rb_gc_mark_movable((VALUE)cc);
-                    }
-                    else {
-                        cds[i].cc = rb_vm_empty_cc();
+
+                if (cc) {
+                    VM_ASSERT((cc->flags & VM_CALLCACHE_ON_STACK) == 0);
+
+                    if (vm_cc_markable(cc)) {
+                        if (!vm_cc_invalidated_p(cc)) {
+                            rb_gc_mark_movable((VALUE)cc);
+                        }
+                        else {
+                            cds[i].cc = rb_vm_empty_cc();
+                        }
                     }
                 }
             }
@@ -3301,6 +3310,23 @@ rb_iseq_trace_flag_cleared(const rb_iseq_t *iseq, size_t pos)
     encoded_iseq_trace_instrument(&iseq_encoded[pos], 0, false);
 }
 
+// We need to fire call events on instructions with b_call events if the block
+// is running as a method. So, if we are listening for call events, then
+// instructions that have b_call events need to become trace variants.
+// Use this function when making decisions about recompiling to trace variants.
+static inline rb_event_flag_t
+add_bmethod_events(rb_event_flag_t events)
+{
+    if (events & RUBY_EVENT_CALL) {
+        events |= RUBY_EVENT_B_CALL;
+    }
+    if (events & RUBY_EVENT_RETURN) {
+        events |= RUBY_EVENT_B_RETURN;
+    }
+    return events;
+}
+
+// Note, to support call/return events for bmethods, turnon_event can have more events than tpval.
 static int
 iseq_add_local_tracepoint(const rb_iseq_t *iseq, rb_event_flag_t turnon_events, VALUE tpval, unsigned int target_line)
 {
@@ -3356,9 +3382,12 @@ iseq_add_local_tracepoint_i(const rb_iseq_t *iseq, void *p)
 }
 
 int
-rb_iseq_add_local_tracepoint_recursively(const rb_iseq_t *iseq, rb_event_flag_t turnon_events, VALUE tpval, unsigned int target_line)
+rb_iseq_add_local_tracepoint_recursively(const rb_iseq_t *iseq, rb_event_flag_t turnon_events, VALUE tpval, unsigned int target_line, bool target_bmethod)
 {
     struct trace_set_local_events_struct data;
+    if (target_bmethod) {
+        turnon_events = add_bmethod_events(turnon_events);
+    }
     data.turnon_events = turnon_events;
     data.tpval = tpval;
     data.target_line = target_line;
@@ -3390,6 +3419,7 @@ iseq_remove_local_tracepoint(const rb_iseq_t *iseq, VALUE tpval)
             ((rb_iseq_t *)iseq)->aux.exec.local_hooks = NULL;
         }
 
+        local_events = add_bmethod_events(local_events);
         for (pc = 0; pc<body->iseq_size;) {
             rb_event_flag_t pc_events = rb_iseq_event_flags(iseq, pc);
             pc += encoded_iseq_trace_instrument(&iseq_encoded[pc], pc_events & (local_events | iseq->aux.exec.global_trace_events), false);
@@ -3440,7 +3470,7 @@ rb_iseq_trace_set(const rb_iseq_t *iseq, rb_event_flag_t turnon_events)
         rb_event_flag_t enabled_events;
         rb_event_flag_t local_events = iseq->aux.exec.local_hooks ? iseq->aux.exec.local_hooks->events : 0;
         ((rb_iseq_t *)iseq)->aux.exec.global_trace_events = turnon_events;
-        enabled_events = turnon_events | local_events;
+        enabled_events = add_bmethod_events(turnon_events | local_events);
 
         for (pc=0; pc<body->iseq_size;) {
             rb_event_flag_t pc_events = rb_iseq_event_flags(iseq, pc);

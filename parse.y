@@ -427,6 +427,8 @@ static void token_info_drop(struct parser_params *p, const char *token, rb_code_
 
 #define lambda_beginning_p() (p->lex.lpar_beg == p->lex.paren_nest)
 
+#define ANON_BLOCK_ID '&'
+
 static enum yytokentype yylex(YYSTYPE*, YYLTYPE*, struct parser_params*);
 
 #ifndef RIPPER
@@ -572,7 +574,7 @@ static NODE *symbol_append(struct parser_params *p, NODE *symbols, NODE *symbol)
 
 static NODE *match_op(struct parser_params*,NODE*,NODE*,const YYLTYPE*,const YYLTYPE*);
 
-static ID  *local_tbl(struct parser_params*);
+static rb_ast_id_table_t *local_tbl(struct parser_params*);
 
 static VALUE reg_compile(struct parser_params*, VALUE, int);
 static void reg_fragment_setenc(struct parser_params*, VALUE, int);
@@ -2846,6 +2848,17 @@ block_arg	: tAMPER arg_value
 		    /*% %*/
 		    /*% ripper: $2 %*/
 		    }
+                | tAMPER
+                    {
+                    /*%%%*/
+                        if (!local_id(p, ANON_BLOCK_ID)) {
+                            compile_error(p, "no anonymous block parameter");
+                        }
+                        $$ = NEW_BLOCK_PASS(NEW_LVAR(ANON_BLOCK_ID, &@1), &@$);
+                    /*%
+                    $$ = Qnil;
+                    %*/
+                    }
 		;
 
 opt_block_arg	: ',' block_arg
@@ -3159,9 +3172,8 @@ primary		: literal
 			ID id = internal_id(p);
 			NODE *m = NEW_ARGS_AUX(0, 0, &NULL_LOC);
 			NODE *args, *scope, *internal_var = NEW_DVAR(id, &@2);
-			ID *tbl = ALLOC_N(ID, 3);
-			tbl[0] = 1 /* length of local var table */; tbl[1] = id /* internal id */;
-                        rb_ast_add_local_table(p->ast, tbl);
+                        rb_ast_id_table_t *tbl = rb_ast_new_local_table(p->ast, 1);
+			tbl->ids[0] = id; /* internal id */
 
 			switch (nd_type($2)) {
 			  case NODE_LASGN:
@@ -5541,6 +5553,14 @@ f_block_arg	: blkarg_mark tIDENTIFIER
 		    /*% %*/
 		    /*% ripper: blockarg!($2) %*/
 		    }
+                | blkarg_mark
+                    {
+                    /*%%%*/
+                        arg_var(p, shadowing_lvar(p, get_id(ANON_BLOCK_ID)));
+                    /*%
+                    $$ = dispatch1(blockarg, Qnil);
+                    %*/
+                    }
 		;
 
 opt_f_block_arg	: ',' f_block_arg
@@ -6353,10 +6373,16 @@ yycompile(VALUE vparser, struct parser_params *p, VALUE fname, int line)
     }
     p->ruby_sourceline = line - 1;
 
+    p->lvtbl = NULL;
+
     p->ast = ast = rb_ast_new();
     rb_suppress_tracing(yycompile0, (VALUE)p);
     p->ast = 0;
     RB_GC_GUARD(vparser); /* prohibit tail call optimization */
+
+    while (p->lvtbl) {
+        local_pop(p);
+    }
 
     return ast;
 }
@@ -12558,38 +12584,36 @@ local_pop(struct parser_params *p)
 }
 
 #ifndef RIPPER
-static ID*
+static rb_ast_id_table_t *
 local_tbl(struct parser_params *p)
 {
     int cnt_args = vtable_size(p->lvtbl->args);
     int cnt_vars = vtable_size(p->lvtbl->vars);
     int cnt = cnt_args + cnt_vars;
     int i, j;
-    ID *buf;
+    rb_ast_id_table_t *tbl;
 
     if (cnt <= 0) return 0;
-    buf = ALLOC_N(ID, cnt + 2);
-    MEMCPY(buf+1, p->lvtbl->args->tbl, ID, cnt_args);
+    tbl = rb_ast_new_local_table(p->ast, cnt);
+    MEMCPY(tbl->ids, p->lvtbl->args->tbl, ID, cnt_args);
     /* remove IDs duplicated to warn shadowing */
-    for (i = 0, j = cnt_args+1; i < cnt_vars; ++i) {
+    for (i = 0, j = cnt_args; i < cnt_vars; ++i) {
 	ID id = p->lvtbl->vars->tbl[i];
 	if (!vtable_included(p->lvtbl->args, id)) {
-	    buf[j++] = id;
+	    tbl->ids[j++] = id;
 	}
     }
-    if (--j < cnt) {
-	REALLOC_N(buf, ID, (cnt = j) + 2);
+    if (j < cnt) {
+        tbl = rb_ast_resize_latest_local_table(p->ast, j);
     }
-    buf[0] = cnt;
-    rb_ast_add_local_table(p->ast, buf);
 
-    return buf;
+    return tbl;
 }
 
 static NODE*
 node_newnode_with_locals(struct parser_params *p, enum node_type type, VALUE a1, VALUE a2, const rb_code_location_t *loc)
 {
-    ID *a0;
+    rb_ast_id_table_t *a0;
     NODE *n;
 
     a0 = local_tbl(p);
@@ -13066,10 +13090,7 @@ rb_init_parse(void)
 static ID
 internal_id(struct parser_params *p)
 {
-    const ID max_id = RB_ID_SERIAL_MAX & ~0xffff;
-    ID id = (ID)vtable_size(p->lvtbl->args) + (ID)vtable_size(p->lvtbl->vars);
-    id = max_id - id;
-    return ID_STATIC_SYM | ID_INTERNAL | (id << ID_SCOPE_SHIFT);
+    return rb_make_temporary_id(vtable_size(p->lvtbl->args) + vtable_size(p->lvtbl->vars));
 }
 #endif /* !RIPPER */
 
@@ -13401,12 +13422,10 @@ rb_parser_free(struct parser_params *p, void *ptr)
     while ((n = *prev) != NULL) {
 	if (n->ptr == ptr) {
 	    *prev = n->next;
-	    rb_gc_force_recycle((VALUE)n);
 	    break;
 	}
 	prev = &n->next;
     }
-    xfree(ptr);
 }
 #endif
 

@@ -2682,13 +2682,13 @@ get_scale(VALUE unit)
 }
 
 static VALUE
-time_s_at(rb_execution_context_t *ec, VALUE klass, VALUE time, VALUE subsec, VALUE unit, VALUE zone, VALUE nosubsec, VALUE nounit)
+time_s_at(rb_execution_context_t *ec, VALUE klass, VALUE time, VALUE subsec, VALUE unit, VALUE zone)
 {
     VALUE t;
     wideval_t timew;
 
-    if (!RTEST(nosubsec)) {
-        int scale = !RTEST(nounit) ? get_scale(unit) : 1000000;
+    if (subsec) {
+        int scale = get_scale(unit);
         time = num_exact(time);
         t = num_exact(subsec);
         timew = wadd(rb_time_magnify(v2w(time)), wmulquoll(v2w(t), TIME_SCALE, scale));
@@ -2710,6 +2710,12 @@ time_s_at(rb_execution_context_t *ec, VALUE klass, VALUE time, VALUE subsec, VAL
     }
 
     return t;
+}
+
+static VALUE
+time_s_at1(rb_execution_context_t *ec, VALUE klass, VALUE time)
+{
+    return time_s_at(ec, klass, time, Qfalse, ID2SYM(id_microsecond), Qnil);
 }
 
 static const char months[][4] = {

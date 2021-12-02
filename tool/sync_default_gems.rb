@@ -74,6 +74,7 @@ REPOSITORIES = {
   digest: "ruby/digest",
   error_highlight: "ruby/error_highlight",
   un: "ruby/un",
+  win32ole: "ruby/win32ole",
 }
 
 # We usually don't use this. Please consider using #sync_default_gems_with_commits instead.
@@ -104,6 +105,19 @@ def sync_default_gems(gem)
     cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/rubocop_gems*"), "tool/bundler")
     cp_r(Dir.glob("#{upstream}/bundler/tool/bundler/standard_gems*"), "tool/bundler")
     rm_rf(%w[spec/bundler/support/artifice/vcr_cassettes])
+    license_files = %w[
+      lib/bundler/vendor/thor/LICENSE.md
+      lib/rubygems/resolver/molinillo/LICENSE
+      lib/bundler/vendor/molinillo/LICENSE
+      lib/bundler/vendor/connection_pool/LICENSE
+      lib/bundler/vendor/net-http-persistent/README.rdoc
+      lib/bundler/vendor/fileutils/LICENSE.txt
+      lib/bundler/vendor/tsort/LICENSE.txt
+      lib/bundler/vendor/uri/LICENSE.txt
+      lib/rubygems/optparse/COPYING
+      lib/rubygems/tsort/LICENSE.txt
+    ]
+    rm_rf license_files
   when "rdoc"
     rm_rf(%w[lib/rdoc lib/rdoc.rb test/rdoc libexec/rdoc libexec/ri])
     cp_r(Dir.glob("#{upstream}/lib/rdoc*"), "lib")
@@ -320,6 +334,7 @@ def sync_default_gems(gem)
     cp_r("#{upstream}/ext/digest", "ext")
     mkdir_p("ext/digest/lib/digest")
     cp_r("#{upstream}/lib/digest.rb", "ext/digest/lib/")
+    cp_r("#{upstream}/lib/digest/version.rb", "ext/digest/lib/digest/")
     mkdir_p("ext/digest/sha2/lib")
     cp_r("#{upstream}/lib/digest/sha2.rb", "ext/digest/sha2/lib")
     move("ext/digest/lib/digest/sha2", "ext/digest/sha2/lib")
@@ -339,6 +354,12 @@ def sync_default_gems(gem)
     cp_r(Dir.glob("#{upstream}/lib/error_highlight*"), "lib")
     cp_r("#{upstream}/error_highlight.gemspec", "lib/error_highlight")
     cp_r("#{upstream}/test", "test/error_highlight")
+  when "win32ole"
+    sync_lib gem, upstream
+    rm_rf(%w[ext/win32ole/lib])
+    Dir.mkdir(*%w[ext/win32ole/lib])
+    move("lib/win32ole/win32ole.gemspec", "ext/win32ole")
+    move(Dir.glob("lib/win32ole*"), "ext/win32ole/lib")
   else
     sync_lib gem, upstream
   end

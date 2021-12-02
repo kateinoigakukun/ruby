@@ -78,6 +78,14 @@ To support disassembly of the generated code, `libcapstone` is also required (`b
 make -j16 install
 ```
 
+On macOS, you may need to specify where to find openssl, libyaml and gdbm:
+
+```
+# Configure with debugging/stats options for development, build and install
+./configure cppflags="-DRUBY_DEBUG -DYJIT_STATS" --prefix=$HOME/.rubies/ruby-yjit --disable-install-doc --disable--install-rdoc --with-opt-dir=$(brew --prefix openssl):$(brew --prefix readline):$(brew --prefix libyaml):$(brew --prefix gdbm)
+make -j16 install
+```
+
 Typically configure will choose default C compiler. To specify the C compiler, use
 ```
 # Choosing a specific c compiler
@@ -113,7 +121,7 @@ You can dump statistics about compilation and execution by running YJIT with the
 ./miniruby --yjit-stats myscript.rb
 ```
 
-The machine code generated for a given method can be printed by adding `puts YJIT.disasm(method(:method_name))` to a Ruby script. Note that no code will be generated if the method is not compiled.
+The machine code generated for a given method can be printed by adding `puts RubyVM::YJIT.disasm(method(:method_name))` to a Ruby script. Note that no code will be generated if the method is not compiled.
 
 
 ### Command-Line Options

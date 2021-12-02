@@ -243,8 +243,8 @@ class TestJIT < Test::Unit::TestCase
     end;
   end
 
-  def test_compile_insn_putstring_concatstrings_tostring
-    assert_compile_once('"a#{}b" + "c"', result_inspect: '"abc"', insns: %i[putstring concatstrings tostring])
+  def test_compile_insn_putstring_concatstrings_objtostring
+    assert_compile_once('"a#{}b" + "c"', result_inspect: '"abc"', insns: %i[putstring concatstrings objtostring])
   end
 
   def test_compile_insn_toregexp
@@ -482,8 +482,8 @@ class TestJIT < Test::Unit::TestCase
     end;
   end
 
-  def test_compile_insn_checktype
-    assert_compile_once("#{<<~"begin;"}\n#{<<~'end;'}", result_inspect: '"42"', insns: %i[checktype])
+  def test_compile_insn_objtostring
+    assert_compile_once("#{<<~"begin;"}\n#{<<~'end;'}", result_inspect: '"42"', insns: %i[objtostring])
     begin;
       a = '2'
       "4#{a}"
@@ -1231,7 +1231,9 @@ class TestJIT < Test::Unit::TestCase
   end
 
   def mark_tested_insn(insn, used_insns:, uplevel: 1)
-    unless used_insns.include?(insn)
+    # Currently, this check emits a false-positive warning against opt_regexpmatch2,
+    # so the insn is excluded explicitly. See https://bugs.ruby-lang.org/issues/18269
+    if !used_insns.include?(insn) && insn != :opt_regexpmatch2
       $stderr.puts
       warn "'#{insn}' insn is not included in the script. Actual insns are: #{used_insns.join(' ')}\n", uplevel: uplevel
     end

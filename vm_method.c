@@ -208,6 +208,10 @@ clear_method_cache_by_id_in_class(VALUE klass, ID mid)
 
                 vm_cme_invalidate((rb_callable_method_entry_t *)cme);
                 RB_DEBUG_COUNTER_INC(cc_invalidate_tree_cme);
+
+                if (cme->def->iseq_overload && cme->def->body.iseq.mandatory_only_cme) {
+                    vm_cme_invalidate((rb_callable_method_entry_t *)cme->def->body.iseq.mandatory_only_cme);
+                }
             }
 
             // invalidate complement tbl
@@ -341,6 +345,16 @@ rb_add_method_cfunc(VALUE klass, ID mid, VALUE (*func)(ANYARGS), int argc, rb_me
     }
 }
 
+void
+rb_add_method_optimized(VALUE klass, ID mid, enum method_optimized_type opt_type, unsigned int index, rb_method_visibility_t visi)
+{
+    rb_method_optimized_t opt = {
+        .type = opt_type,
+        .index = index,
+    };
+    rb_add_method(klass, mid, VM_METHOD_TYPE_OPTIMIZED, &opt, visi);
+}
+
 static void
 rb_method_definition_release(rb_method_definition_t *def, int complemented)
 {
@@ -451,10 +465,13 @@ rb_method_definition_set(const rb_method_entry_t *me, rb_method_definition_t *de
 	  case VM_METHOD_TYPE_ISEQ:
 	    {
 		rb_method_iseq_t *iseq_body = (rb_method_iseq_t *)opts;
+                const rb_iseq_t *iseq = iseq_body->iseqptr;
 		rb_cref_t *method_cref, *cref = iseq_body->cref;
 
 		/* setup iseq first (before invoking GC) */
-		RB_OBJ_WRITE(me, &def->body.iseq.iseqptr, iseq_body->iseqptr);
+		RB_OBJ_WRITE(me, &def->body.iseq.iseqptr, iseq);
+
+                if (iseq->body->mandatory_only_iseq) def->iseq_overload = 1;
 
 		if (0) vm_cref_dump("rb_method_definition_create", cref);
 
@@ -502,7 +519,7 @@ rb_method_definition_set(const rb_method_entry_t *me, rb_method_definition_t *de
 	    setup_method_cfunc_struct(UNALIGNED_MEMBER_PTR(def, body.cfunc), rb_f_notimplement, -1);
 	    return;
 	  case VM_METHOD_TYPE_OPTIMIZED:
-            def->body.optimize_type = (enum method_optimized_type)(intptr_t)opts;
+            def->body.optimized = *(rb_method_optimized_t *)opts;
 	    return;
 	  case VM_METHOD_TYPE_REFINED:
 	    {
@@ -531,7 +548,8 @@ method_definition_reset(const rb_method_entry_t *me)
       case VM_METHOD_TYPE_ISEQ:
 	RB_OBJ_WRITTEN(me, Qundef, def->body.iseq.iseqptr);
 	RB_OBJ_WRITTEN(me, Qundef, def->body.iseq.cref);
-	break;
+        RB_OBJ_WRITTEN(me, Qundef, def->body.iseq.mandatory_only_cme);
+        break;
       case VM_METHOD_TYPE_ATTRSET:
       case VM_METHOD_TYPE_IVAR:
 	RB_OBJ_WRITTEN(me, Qundef, def->body.attr.location);
@@ -893,6 +911,35 @@ rb_method_entry_make(VALUE klass, ID mid, VALUE defined_class, rb_method_visibil
     return me;
 }
 
+static const rb_callable_method_entry_t *
+overloaded_cme(const rb_callable_method_entry_t *cme)
+{
+    VM_ASSERT(cme->def->iseq_overload);
+    VM_ASSERT(cme->def->type == VM_METHOD_TYPE_ISEQ);
+    VM_ASSERT(cme->def->body.iseq.iseqptr != NULL);
+
+    const rb_callable_method_entry_t *monly_cme = cme->def->body.iseq.mandatory_only_cme;
+
+    if (monly_cme && !METHOD_ENTRY_INVALIDATED(monly_cme)) {
+        // ok
+    }
+    else {
+        rb_method_definition_t *def = rb_method_definition_create(VM_METHOD_TYPE_ISEQ, cme->def->original_id);
+        def->body.iseq.cref = cme->def->body.iseq.cref;
+        def->body.iseq.iseqptr = cme->def->body.iseq.iseqptr->body->mandatory_only_iseq;
+
+        rb_method_entry_t *me = rb_method_entry_alloc(cme->called_id,
+                                                      cme->owner,
+                                                      cme->defined_class,
+                                                      def);
+        METHOD_ENTRY_VISI_SET(me, METHOD_ENTRY_VISI(cme));
+        RB_OBJ_WRITE(cme, &cme->def->body.iseq.mandatory_only_cme, me);
+        monly_cme = (rb_callable_method_entry_t *)me;
+    }
+
+    return monly_cme;
+}
+
 #define CALL_METHOD_HOOK(klass, hook, mid) do {		\
 	const VALUE arg = ID2SYM(mid);			\
 	VALUE recv_class = (klass);			\
@@ -932,6 +979,7 @@ rb_add_method_iseq(VALUE klass, ID mid, const rb_iseq_t *iseq, rb_cref_t *cref, 
 
     iseq_body.iseqptr = iseq;
     iseq_body.cref = cref;
+
     rb_add_method(klass, mid, VM_METHOD_TYPE_ISEQ, &iseq_body, visi);
 }
 
@@ -1876,7 +1924,7 @@ rb_method_definition_eq(const rb_method_definition_t *d1, const rb_method_defini
 
     switch (d1->type) {
       case VM_METHOD_TYPE_ISEQ:
-	return d1->body.iseq.iseqptr == d2->body.iseq.iseqptr;
+        return d1->body.iseq.iseqptr == d2->body.iseq.iseqptr;
       case VM_METHOD_TYPE_CFUNC:
 	return
 	  d1->body.cfunc.func == d2->body.cfunc.func &&
@@ -1893,7 +1941,8 @@ rb_method_definition_eq(const rb_method_definition_t *d1, const rb_method_defini
       case VM_METHOD_TYPE_UNDEF:
 	return 1;
       case VM_METHOD_TYPE_OPTIMIZED:
-	return d1->body.optimize_type == d2->body.optimize_type;
+	return (d1->body.optimized.type == d2->body.optimized.type) &&
+               (d1->body.optimized.index == d2->body.optimized.index);
       case VM_METHOD_TYPE_REFINED:
       case VM_METHOD_TYPE_ALIAS:
 	break;
@@ -1927,7 +1976,8 @@ rb_hash_method_definition(st_index_t hash, const rb_method_definition_t *def)
       case VM_METHOD_TYPE_UNDEF:
 	return hash;
       case VM_METHOD_TYPE_OPTIMIZED:
-	return rb_hash_uint(hash, def->body.optimize_type);
+        hash = rb_hash_uint(hash, def->body.optimized.index);
+	return rb_hash_uint(hash, def->body.optimized.type);
       case VM_METHOD_TYPE_REFINED:
       case VM_METHOD_TYPE_ALIAS:
 	break; /* unreachable */
@@ -2080,25 +2130,31 @@ set_visibility(int argc, const VALUE *argv, VALUE module, rb_method_visibility_t
     if (argc == 0) {
         scope_visibility_check();
         rb_scope_visibility_set(visi);
+        return Qnil;
     }
-    else {
-	set_method_visibility(module, argc, argv, visi);
+
+    set_method_visibility(module, argc, argv, visi);
+    if (argc == 1) {
+        return argv[0];
     }
-    return module;
+    return rb_ary_new_from_values(argc, argv);
 }
 
 /*
  *  call-seq:
- *     public                 -> self
- *     public(symbol, ...)    -> self
- *     public(string, ...)    -> self
- *     public(array)          -> self
+ *     public                                -> nil
+ *     public(method_name)                   -> method_name
+ *     public(method_name, method_name, ...) -> array
+ *     public(array)                         -> array
  *
  *  With no arguments, sets the default visibility for subsequently
  *  defined methods to public. With arguments, sets the named methods to
  *  have public visibility.
  *  String arguments are converted to symbols.
  *  An Array of Symbols and/or Strings is also accepted.
+ *  If a single argument is passed, it is returned.
+ *  If no argument is passed, nil is returned.
+ *  If multiple arguments are passed, the arguments are returned as an array.
  */
 
 static VALUE
@@ -2109,16 +2165,19 @@ rb_mod_public(int argc, VALUE *argv, VALUE module)
 
 /*
  *  call-seq:
- *     protected                -> self
- *     protected(symbol, ...)   -> self
- *     protected(string, ...)   -> self
- *     protected(array)         -> self
+ *     protected                                -> nil
+ *     protected(method_name)                   -> method_name
+ *     protected(method_name, method_name, ...) -> array
+ *     protected(array)                         -> array
  *
  *  With no arguments, sets the default visibility for subsequently
  *  defined methods to protected. With arguments, sets the named methods
  *  to have protected visibility.
  *  String arguments are converted to symbols.
  *  An Array of Symbols and/or Strings is also accepted.
+ *  If a single argument is passed, it is returned.
+ *  If no argument is passed, nil is returned.
+ *  If multiple arguments are passed, the arguments are returned as an array.
  *
  *  If a method has protected visibility, it is callable only where
  *  <code>self</code> of the context is the same as the method.
@@ -2138,16 +2197,19 @@ rb_mod_protected(int argc, VALUE *argv, VALUE module)
 
 /*
  *  call-seq:
- *     private                 -> self
- *     private(symbol, ...)    -> self
- *     private(string, ...)    -> self
- *     private(array)          -> self
+ *     private                                -> nil
+ *     private(method_name)                   -> method_name
+ *     private(method_name, method_name, ...) -> array
+ *     private(array)                         -> array
  *
  *  With no arguments, sets the default visibility for subsequently
  *  defined methods to private. With arguments, sets the named methods
  *  to have private visibility.
  *  String arguments are converted to symbols.
  *  An Array of Symbols and/or Strings is also accepted.
+ *  If a single argument is passed, it is returned.
+ *  If no argument is passed, nil is returned.
+ *  If multiple arguments are passed, the arguments are returned as an array.
  *
  *     module Mod
  *       def a()  end
@@ -2382,8 +2444,9 @@ top_ruby2_keywords(int argc, VALUE *argv, VALUE module)
 
 /*
  *  call-seq:
- *     module_function(symbol, ...)    -> self
- *     module_function(string, ...)    -> self
+ *     module_function                                -> nil
+ *     module_function(method_name)                   -> method_name
+ *     module_function(method_name, method_name, ...) -> array
  *
  *  Creates module functions for the named methods. These functions may
  *  be called with the module as a receiver, and also become available
@@ -2393,6 +2456,9 @@ top_ruby2_keywords(int argc, VALUE *argv, VALUE module)
  *  used with no arguments, subsequently defined methods become module
  *  functions.
  *  String arguments are converted to symbols.
+ *  If a single argument is passed, it is returned.
+ *  If no argument is passed, nil is returned.
+ *  If multiple arguments are passed, the arguments are returned as an array.
  *
  *     module Mod
  *       def one
@@ -2431,7 +2497,7 @@ rb_mod_modfunc(int argc, VALUE *argv, VALUE module)
 
     if (argc == 0) {
 	rb_scope_module_func_set();
-	return module;
+        return Qnil;
     }
 
     set_method_visibility(module, argc, argv, METHOD_VISI_PRIVATE);
@@ -2457,7 +2523,10 @@ rb_mod_modfunc(int argc, VALUE *argv, VALUE module)
 	}
 	rb_method_entry_set(rb_singleton_class(module), id, me, METHOD_VISI_PUBLIC);
     }
-    return module;
+    if (argc == 1) {
+        return argv[0];
+    }
+    return rb_ary_new_from_values(argc, argv);
 }
 
 #ifdef __GNUC__

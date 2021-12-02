@@ -65,16 +65,16 @@ enum ruby_encoding_consts {
 
 #define ENCODING_INLINE_MAX RUBY_ENCODING_INLINE_MAX /**< @old{RUBY_ENCODING_INLINE_MAX} */
 #define ENCODING_SHIFT RUBY_ENCODING_SHIFT           /**< @old{RUBY_ENCODING_SHIFT} */
-#define ENCODING_MASK RUBY_ENCODING_MASK             /**< @old{RUBY_ENCODING_SHIFT} */
+#define ENCODING_MASK RUBY_ENCODING_MASK             /**< @old{RUBY_ENCODING_MASK} */
 
 /**
  * Destructively assigns the passed encoding  to the passed object.  The object
  * must be  capable of  having inline  encoding.  Using  this macro  needs deep
  * understanding of bit level object binary layout.
  *
- * @param[out]  obj  Target object to modify.
- * @param[in]   i    Encoding in encindex format.
- * @post        `obj`'s encoding is `i`.
+ * @param[out]  obj      Target object to modify.
+ * @param[in]   ecindex  Encoding in encindex format.
+ * @post        `obj`'s encoding is `encindex`.
  */
 static inline void
 RB_ENCODING_SET_INLINED(VALUE obj, int encindex)
@@ -626,10 +626,10 @@ int rb_enc_codelen(int code, rb_encoding *enc);
 /**
  * Identical to rb_enc_codelen(), except it returns 0 for invalid code points.
  *
- * @param[in]  code       Code point in question.
- * @param[in]  enc        Encoding to convert the code into a byte sequence.
- * @retval     0          `code` is invalid.
- * @return     otherwise  Number of bytes used for `enc` to encode `code`.
+ * @param[in]  c          Code point in question.
+ * @param[in]  enc        Encoding to convert `c` into a byte sequence.
+ * @retval     0          `c` is invalid.
+ * @return     otherwise  Number of bytes needed for `enc` to encode `c`.
  */
 static inline int
 rb_enc_code_to_mbclen(int c, rb_encoding *enc)

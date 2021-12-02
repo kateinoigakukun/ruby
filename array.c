@@ -514,13 +514,9 @@ rb_ary_decrement_share(VALUE shared_root)
 {
     if (shared_root) {
         long num = ARY_SHARED_ROOT_REFCNT(shared_root) - 1;
-	if (num == 0) {
-            rb_ary_free(shared_root);
-            rb_gc_force_recycle(shared_root);
-	}
-	else if (num > 0) {
+        if (num > 0) {
             ARY_SET_SHARED_ROOT_REFCNT(shared_root, num);
-	}
+        }
     }
 }
 
@@ -6341,7 +6337,7 @@ rb_ary_shuffle(rb_execution_context_t *ec, VALUE ary, VALUE randgen)
 }
 
 static VALUE
-rb_ary_sample(rb_execution_context_t *ec, VALUE ary, VALUE randgen, VALUE nv, VALUE to_array)
+ary_sample(rb_execution_context_t *ec, VALUE ary, VALUE randgen, VALUE nv, VALUE to_array)
 {
     VALUE result;
     long n, len, i, j, k, idx[10];
@@ -6468,6 +6464,12 @@ rb_ary_sample(rb_execution_context_t *ec, VALUE ary, VALUE randgen, VALUE nv, VA
     ARY_SET_LEN(result, n);
 
     return result;
+}
+
+static VALUE
+ary_sample0(rb_execution_context_t *ec, VALUE ary)
+{
+    return ary_sample(ec, ary, rb_cRandom, Qfalse, Qfalse);
 }
 
 static VALUE

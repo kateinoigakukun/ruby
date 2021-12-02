@@ -7,6 +7,15 @@ Note that each entry is kept to a minimum, see links for details.
 
 ## Language changes
 
+* The block arguments can be now be anonymous, if the block will
+  only be passed to another method. [[Feature #11256]]
+
+    ```ruby
+    def foo(&)
+      bar(&)
+    end
+    ```
+
 * Pin operator now takes an expression. [[Feature #17411]]
 
     ```ruby
@@ -112,6 +121,21 @@ Outstanding ones only.
       C.descendants    #=> []
       ```
 
+    * Class#subclasses, which returns an array of classes
+      directly inheriting from the receiver, not
+      including singleton classes.
+      [[Feature #18273]]
+
+      ```ruby
+      class A; end
+      class B < A; end
+      class C < B; end
+      class D < A; end
+      A.subclasses    #=> [D, B]
+      B.subclasses    #=> [C]
+      C.subclasses    #=> []
+      ```
+
 * Enumerable
 
     * Enumerable#compact is added. [[Feature #17312]]
@@ -143,6 +167,13 @@ Outstanding ones only.
 
     * Integer.try_convert is added. [[Feature #15211]]
 
+* Kernel
+
+
+    * Kernel#load now accepts a module as the second argument,
+      and will load the file using the given module as the top
+      level module. [[Feature #6210]]
+
 * MatchData
 
     * MatchData#match is added [[Feature #18172]]
@@ -155,6 +186,20 @@ Outstanding ones only.
       already includes the argument. Module#prepend still does not
       modify the ancestor chain if the receiver has already prepended
       the argument. [[Bug #17423]]
+
+    * Module#private, #public, #protected, and #module_function will
+      now return their arguments.  If a single argument is given, it
+      is returned. If no arguments are given, nil is returned.  If
+      multiple arguments are given, they are returned as an array.
+      [[Feature #12495]]
+
+* Process
+
+    * Process.\_fork is added. This is a core method for fork(2).
+      Do not call this method directly; it is called by existing
+      fork methods: Kernel.#fork, Process.fork, and IO.popen("-").
+      Application monitoring libraries can overwride this method to
+      hook fork event. [[Feature #17795]]
 
 * Struct
 
@@ -195,6 +240,9 @@ Outstanding ones only.
 
     * Introduce non-blocking `Timeout.timeout` using `timeout_after` hook.
       [[Feature #17470]]
+
+    * Introduce new scheduler hooks `io_read` and `io_write` along with a
+      low level `IO::Buffer` for zero-copy read/write. [[Feature #18020]]
 
     * IO hooks `io_wait`, `io_read`, `io_write`, receive the original IO object
       where possible. [[Bug #18003]]
@@ -302,6 +350,9 @@ Excluding feature bug fixes.
 
 * Documented. [[GH-4815]]
 
+* `rb_gc_force_recycle` is deprecated and has been changed to a no-op.
+  [[Feature #18290]]
+
 ## Implementation improvements
 
 ### JIT
@@ -384,7 +435,10 @@ See [the repository](https://github.com/ruby/error_highlight) in detail.
   `$VERBOSE` is `nil`.  [[Feature #17798]]
 
 [Bug #4443]:      https://bugs.ruby-lang.org/issues/4443
+[Feature #6210]:  https://bugs.ruby-lang.org/issues/6210
+[Feature #11256]: https://bugs.ruby-lang.org/issues/11256
 [Feature #12194]: https://bugs.ruby-lang.org/issues/12194
+[Feature #12495]: https://bugs.ruby-lang.org/issues/12495
 [Feature #14256]: https://bugs.ruby-lang.org/issues/14256
 [Feature #14394]: https://bugs.ruby-lang.org/issues/14394
 [Feature #14579]: https://bugs.ruby-lang.org/issues/14579
@@ -406,14 +460,19 @@ See [the repository](https://github.com/ruby/error_highlight) in detail.
 [Feature #17744]: https://bugs.ruby-lang.org/issues/17744
 [Feature #17750]: https://bugs.ruby-lang.org/issues/17750
 [Feature #17762]: https://bugs.ruby-lang.org/issues/17762
+[Feature #17795]: https://bugs.ruby-lang.org/issues/17795
 [Feature #17798]: https://bugs.ruby-lang.org/issues/17798
 [Bug #17827]:     https://bugs.ruby-lang.org/issues/17827
 [Feature #17853]: https://bugs.ruby-lang.org/issues/17853
 [Bug #18003]:     https://bugs.ruby-lang.org/issues/18003
 [Feature #18008]: https://bugs.ruby-lang.org/issues/18008
 [Feature #18015]: https://bugs.ruby-lang.org/issues/18015
+[Feature #18020]: https://bugs.ruby-lang.org/issues/18020
 [Feature #18029]: https://bugs.ruby-lang.org/issues/18029
 [Feature #18172]: https://bugs.ruby-lang.org/issues/18172
 [Feature #18229]: https://bugs.ruby-lang.org/issues/18229
+[Feature #18290]: https://bugs.ruby-lang.org/issues/18290
+[Feature #18273]: https://bugs.ruby-lang.org/issues/18273
 [GH-1509]: https://github.com/ruby/ruby/pull/1509
 [GH-4815]: https://github.com/ruby/ruby/pull/4815
+

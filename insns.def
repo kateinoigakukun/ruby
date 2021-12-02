@@ -236,9 +236,8 @@ getclassvariable
 /* "class variable access from toplevel" warning can be hooked. */
 // attr bool leaf = false; /* has rb_warning() */
 {
-    rb_cref_t * cref = vm_get_cref(GET_EP());
     rb_control_frame_t *cfp = GET_CFP();
-    val = vm_getclassvariable(GET_ISEQ(), cref, cfp, id, (ICVARC)ic);
+    val = vm_getclassvariable(GET_ISEQ(), cfp, id, (ICVARC)ic);
 }
 
 /* Set value of class variable id of klass as val. */
@@ -251,7 +250,7 @@ setclassvariable
 // attr bool leaf = false; /* has rb_warning() */
 {
     vm_ensure_not_refinement_module(GET_SELF());
-    vm_setclassvariable(GET_ISEQ(), vm_get_cref(GET_EP()), GET_CFP(), id,  val, (ICVARC)ic);
+    vm_setclassvariable(GET_ISEQ(), GET_CFP(), id,  val, (ICVARC)ic);
 }
 
 /* Get constant variable id. If klass is Qnil and allow_nil is Qtrue, constants
@@ -382,9 +381,10 @@ concatstrings
     val = rb_str_concat_literals(num, STACK_ADDR_FROM_TOP(num));
 }
 
-/* push the result of to_s. */
+/* Convert the result to string if not already a string.
+   This is used as a backup if to_s does not return a string. */
 DEFINE_INSN
-tostring
+anytostring
 ()
 (VALUE val, VALUE str)
 (VALUE val)
@@ -779,6 +779,21 @@ opt_send_without_block
     if (val == Qundef) {
         RESTORE_REGS();
         NEXT_INSN();
+    }
+}
+
+/* Convert object to string using to_s or equivalent. */
+DEFINE_INSN
+objtostring
+(CALL_DATA cd)
+(VALUE recv)
+(VALUE val)
+// attr bool leaf = false;
+{
+    val = vm_objtostring(GET_ISEQ(), recv, cd);
+
+    if (val == Qundef) {
+        CALL_SIMPLE_METHOD();
     }
 }
 

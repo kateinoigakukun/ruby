@@ -1180,8 +1180,9 @@ rb_tracepoint_enable_for_target(VALUE tpval, VALUE target, VALUE target_line)
 {
     rb_tp_t *tp = tpptr(tpval);
     const rb_iseq_t *iseq = iseq_of(target);
-    int n;
+    int n = 0;
     unsigned int line = 0;
+    bool target_bmethod = false;
 
     if (tp->tracing > 0) {
         rb_raise(rb_eArgError, "can't nest-enable a targeting TracePoint");
@@ -1199,10 +1200,6 @@ rb_tracepoint_enable_for_target(VALUE tpval, VALUE target, VALUE target_line)
     VM_ASSERT(tp->local_target_set == Qfalse);
     tp->local_target_set = rb_obj_hide(rb_ident_hash_new());
 
-    /* iseq */
-    n = rb_iseq_add_local_tracepoint_recursively(iseq, tp->events, tpval, line);
-    rb_hash_aset(tp->local_target_set, (VALUE)iseq, Qtrue);
-
     /* bmethod */
     if (rb_obj_is_method(target)) {
         rb_method_definition_t *def = (rb_method_definition_t *)rb_method_def(target);
@@ -1211,10 +1208,16 @@ rb_tracepoint_enable_for_target(VALUE tpval, VALUE target, VALUE target_line)
             def->body.bmethod.hooks = ZALLOC(rb_hook_list_t);
             rb_hook_list_connect_tracepoint(target, def->body.bmethod.hooks, tpval, 0);
             rb_hash_aset(tp->local_target_set, target, Qfalse);
+            target_bmethod = true;
 
             n++;
         }
     }
+
+    /* iseq */
+    n += rb_iseq_add_local_tracepoint_recursively(iseq, tp->events, tpval, line, target_bmethod);
+    rb_hash_aset(tp->local_target_set, (VALUE)iseq, Qtrue);
+
 
     if (n == 0) {
         rb_raise(rb_eArgError, "can not enable any hooks");
@@ -1582,6 +1585,14 @@ postponed_job_register(rb_execution_context_t *ec, rb_vm_t *vm,
     return PJRR_SUCCESS;
 }
 
+static rb_execution_context_t *
+get_valid_ec(rb_vm_t *vm)
+{
+    rb_execution_context_t *ec = rb_current_execution_context(false);
+    if (ec == NULL) ec = rb_vm_main_ractor_ec(vm);
+    return ec;
+}
+
 /*
  * return 0 if job buffer is full
  * Async-signal-safe
@@ -1589,8 +1600,8 @@ postponed_job_register(rb_execution_context_t *ec, rb_vm_t *vm,
 int
 rb_postponed_job_register(unsigned int flags, rb_postponed_job_func_t func, void *data)
 {
-    rb_execution_context_t *ec = GET_EC();
-    rb_vm_t *vm = rb_ec_vm_ptr(ec);
+    rb_vm_t *vm = GET_VM();
+    rb_execution_context_t *ec = get_valid_ec(vm);
 
   begin:
     switch (postponed_job_register(ec, vm, flags, func, data, MAX_POSTPONED_JOB, vm->postponed_job_index)) {
@@ -1608,8 +1619,8 @@ rb_postponed_job_register(unsigned int flags, rb_postponed_job_func_t func, void
 int
 rb_postponed_job_register_one(unsigned int flags, rb_postponed_job_func_t func, void *data)
 {
-    rb_execution_context_t *ec = GET_EC();
-    rb_vm_t *vm = rb_ec_vm_ptr(ec);
+    rb_vm_t *vm = GET_VM();
+    rb_execution_context_t *ec = get_valid_ec(vm);
     rb_postponed_job_t *pjob;
     rb_atomic_t i, index;
 

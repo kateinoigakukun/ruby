@@ -868,7 +868,9 @@ static inline VALUE
 empty_str_alloc(VALUE klass)
 {
     RUBY_DTRACE_CREATE_HOOK(STRING, 0);
-    return str_alloc_embed(klass, 0);
+    VALUE str = str_alloc_embed(klass, 0);
+    memset(RSTRING(str)->as.embed.ary, 0, str_embed_capa(str));
+    return str;
 }
 
 static VALUE
@@ -1164,7 +1166,6 @@ str_cat_conv_enc_opts(VALUE newstr, long ofs, const char *ptr, long len,
     }
     DATA_PTR(econv_wrapper) = 0;
     rb_econv_close(ec);
-    rb_gc_force_recycle(econv_wrapper);
     switch (ret) {
       case econv_finished:
 	len = dp - (unsigned char*)RSTRING_PTR(newstr);
@@ -1380,20 +1381,24 @@ rb_str_tmp_frozen_release(VALUE orig, VALUE tmp)
 
     if (STR_EMBED_P(tmp)) {
 	assert(OBJ_FROZEN_RAW(tmp));
-	rb_gc_force_recycle(tmp);
     }
     else if (FL_TEST_RAW(orig, STR_SHARED) &&
 	    !FL_TEST_RAW(orig, STR_TMPLOCK|RUBY_FL_FREEZE)) {
 	VALUE shared = RSTRING(orig)->as.heap.aux.shared;
 
 	if (shared == tmp && !FL_TEST_RAW(tmp, STR_BORROWED)) {
+            assert(RSTRING(orig)->as.heap.ptr == RSTRING(tmp)->as.heap.ptr);
+            assert(RSTRING(orig)->as.heap.len == RSTRING(tmp)->as.heap.len);
+
+            /* Unshare orig since the root (tmp) only has this one child. */
 	    FL_UNSET_RAW(orig, STR_SHARED);
-	    assert(RSTRING(orig)->as.heap.ptr == RSTRING(tmp)->as.heap.ptr);
-	    assert(RSTRING(orig)->as.heap.len == RSTRING(tmp)->as.heap.len);
 	    RSTRING(orig)->as.heap.aux.capa = RSTRING(tmp)->as.heap.aux.capa;
 	    RBASIC(orig)->flags |= RBASIC(tmp)->flags & STR_NOFREE;
 	    assert(OBJ_FROZEN_RAW(tmp));
-	    rb_gc_force_recycle(tmp);
+
+            /* Make tmp embedded and empty so it is safe for sweeping. */
+            STR_SET_EMBED(tmp);
+            STR_SET_EMBED_LEN(tmp, 0);
 	}
     }
 }
@@ -1729,11 +1734,11 @@ str_duplicate_setup(VALUE klass, VALUE str, VALUE dup)
     VALUE flags = FL_TEST_RAW(str, flag_mask);
     int encidx = 0;
     if (STR_EMBED_P(str)) {
-        assert(str_embed_capa(dup) >= RSTRING_EMBED_LEN(str));
-        STR_SET_EMBED_LEN(dup, RSTRING_EMBED_LEN(str));
-        MEMCPY(RSTRING(dup)->as.embed.ary, RSTRING(str)->as.embed.ary,
-               char, RSTRING_EMBED_LEN(str));
-        flags &= ~RSTRING_NOEMBED;
+        long len = RSTRING_EMBED_LEN(str);
+
+        assert(str_embed_capa(dup) >= len + 1);
+        STR_SET_EMBED_LEN(dup, len);
+        MEMCPY(RSTRING(dup)->as.embed.ary, RSTRING(str)->as.embed.ary, char, len + 1);
     }
     else {
         VALUE root = str;
@@ -1775,7 +1780,7 @@ static inline VALUE
 ec_str_duplicate(struct rb_execution_context_struct *ec, VALUE klass, VALUE str)
 {
     VALUE dup;
-    if (FL_TEST(str, STR_NOEMBED)) {
+    if (!USE_RVARGC || FL_TEST(str, STR_NOEMBED)) {
         dup = ec_str_alloc_heap(ec, klass);
     }
     else {
@@ -1789,7 +1794,7 @@ static inline VALUE
 str_duplicate(VALUE klass, VALUE str)
 {
     VALUE dup;
-    if (FL_TEST(str, STR_NOEMBED)) {
+    if (!USE_RVARGC || FL_TEST(str, STR_NOEMBED)) {
         dup = str_alloc_heap(klass);
     }
     else {
@@ -2318,6 +2323,7 @@ rb_str_times(VALUE str, VALUE times)
     if (RSTRING_LEN(str) == 1 && RSTRING_PTR(str)[0] == 0) {
         if (STR_EMBEDDABLE_P(len, 1)) {
             str2 = str_alloc_embed(rb_cString, len + 1);
+            memset(RSTRING_PTR(str2), 0, len + 1);
         }
         else {
             str2 = str_alloc_heap(rb_cString);

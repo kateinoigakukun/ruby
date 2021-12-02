@@ -192,8 +192,8 @@ typedef struct yjit_branch_entry
     struct yjit_block_version *block;
 
     // Positions where the generated code starts and ends
-    uint8_t* start_addr;
-    uint8_t* end_addr;
+    uint8_t *start_addr;
+    uint8_t *end_addr;
 
     // Context right after the branch instruction
     ctx_t src_ctx;
@@ -204,7 +204,7 @@ typedef struct yjit_branch_entry
     struct yjit_block_version *blocks[2];
 
     // Jump target addresses
-    uint8_t* dst_addrs[2];
+    uint8_t *dst_addrs[2];
 
     // Branch code generation function
     branchgen_fn gen_fn;
@@ -241,8 +241,8 @@ typedef struct yjit_block_version
     ctx_t ctx;
 
     // Positions where the generated code starts and ends
-    uint8_t* start_addr;
-    uint8_t* end_addr;
+    uint8_t *start_addr;
+    uint8_t *end_addr;
 
     // List of incoming branches (from predecessors)
     branch_array_t incoming;
@@ -257,6 +257,10 @@ typedef struct yjit_block_version
     // CME dependencies of this block, to help to remove all pointers to this
     // block in the system.
     cme_dependency_array_t cme_dependencies;
+
+    // Code address of an exit for `ctx` and `blockid`. Used for block
+    // invalidation.
+    uint8_t *entry_exit;
 
     // Index one past the last instruction in the iseq
     uint32_t end_idx;

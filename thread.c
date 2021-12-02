@@ -3307,12 +3307,7 @@ rb_thread_status(VALUE thread)
 static VALUE
 rb_thread_alive_p(VALUE thread)
 {
-    if (thread_finished(rb_thread_ptr(thread))) {
-        return Qfalse;
-    }
-    else {
-        return Qtrue;
-    }
+    return RBOOL(!thread_finished(rb_thread_ptr(thread)));
 }
 
 /*
@@ -3440,7 +3435,6 @@ rb_thread_to_s(VALUE thread)
     if ((loc = threadptr_invoke_proc_location(target_th)) != Qnil) {
         rb_str_catf(str, " %"PRIsVALUE":%"PRIsVALUE,
                     RARRAY_AREF(loc, 0), RARRAY_AREF(loc, 1));
-        rb_gc_force_recycle(loc);
     }
     rb_str_catf(str, " %s>", status);
 

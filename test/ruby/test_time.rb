@@ -241,6 +241,10 @@ class TestTime < Test::Unit::TestCase
     assert_equal(1, Time.at(0, 0.001).nsec)
   end
 
+  def test_at_splat
+    assert_equal(Time.at(1, 2), Time.at(*[1, 2]))
+  end
+
   def test_at_with_unit
     assert_equal(123456789, Time.at(0, 123456789, :nanosecond).nsec)
     assert_equal(123456789, Time.at(0, 123456789, :nsec).nsec)
@@ -1280,22 +1284,6 @@ class TestTime < Test::Unit::TestCase
     assert_equal("365", t.strftime("%j"))
     t = Time.utc(2017, 1, 1, 1, 0, 0).getlocal("-05:00")
     assert_equal("366", t.strftime("%j"))
-  end
-
-  def test_strftime_no_hidden_garbage
-    skip unless Thread.list.size == 1
-
-    fmt = %w(Y m d).map { |x| "%#{x}" }.join('-') # defeats optimization
-    t = Time.at(0).getutc
-    ObjectSpace.count_objects(res = {}) # creates strings on first call
-    GC.disable
-    before = ObjectSpace.count_objects(res)[:T_STRING]
-    val = t.strftime(fmt)
-    after = ObjectSpace.count_objects(res)[:T_STRING]
-    assert_equal before + 1, after, 'only new string is the created one'
-    assert_equal '1970-01-01', val
-  ensure
-    GC.enable
   end
 
   def test_num_exact_error

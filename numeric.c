@@ -35,6 +35,7 @@
 #include "internal/numeric.h"
 #include "internal/object.h"
 #include "internal/rational.h"
+#include "internal/string.h"
 #include "internal/util.h"
 #include "internal/variable.h"
 #include "ruby/encoding.h"
@@ -933,9 +934,9 @@ num_negative_p(VALUE num)
 
 /********************************************************************
  *
- * Document-class: Float
+ *  Document-class: Float
  *
- *  Float objects represent inexact real numbers using the native
+ *  A \Float object represents a sometimes-inexact real number using the native
  *  architecture's double-precision floating point representation.
  *
  *  Floating point has a different arithmetic and is an inexact number.
@@ -944,6 +945,68 @@ num_negative_p(VALUE num)
  *  - https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html
  *  - https://github.com/rdp/ruby_tutorials_core/wiki/Ruby-Talk-FAQ#floats_imprecise
  *  - https://en.wikipedia.org/wiki/Floating_point#Accuracy_problems
+ *
+ *  You can create a \Float object explicitly with:
+ *
+ *  - Global method {Float}[Kernel.html#method-i-Float].
+ *  - A {floating-point literal}[doc/syntax/literals_rdoc.html#label-Floating-Point+Literals].
+ *
+ *  == What's Here
+ *
+ *  First, what's elsewhere. \Class \Float:
+ *
+ *  - Inherits from {class Numeric}[Numeric.html#class-Numeric-label-What-27s+Here].
+ *
+ *  Here, class \Float provides methods for:
+ *
+ *  - {Querying}[#class-Float-label-Querying]
+ *  - {Comparing}[#class-Float-label-Comparing]
+ *  - {Converting}[#class-Float-label-Converting]
+ *
+ *  === Querying
+ *
+ *  - #finite?:: Returns whether +self+ is finite.
+ *  - #hash:: Returns the integer hash code for +self+.
+ *  - #infinite?:: Returns whether +self+ is infinite.
+ *  - #nan?:: Returns whether +self+ is a NaN (not-a-number).
+ *
+ *  === Comparing
+ *
+ *  - {<}[#method-i-3C]:: Returns whether +self+ is less than the given value.
+ *  - {<=}[#method-i-3C-3D]:: Returns whether +self+ is less than
+ *                            or equal to the given value.
+ *  - {<=>}[#method-i-3C-3D-3E]:: Returns a number indicating whether +self+ is less than,
+ *                                equal to, or greater than the given value.
+ *  - {==}[#method-i-3D-3D] (aliased as #=== and #eql>):: Returns whether +self+ is
+ *                                                        equal to the given value.
+ *  - {>}[#method-i-3E]:: Returns whether +self+ is greater than the given value.
+ *  - {>=}[#method-i-3E-3D]:: Returns whether +self+ is greater than
+ *                            or equal to the given value.
+ *
+ *  === Converting
+ *
+ *  - #% (aliased as #modulo):: Returns +self+ modulo the given value.
+ *  - #*:: Returns the product of +self+ and the given value.
+ *  - {**}[#method-i-2A-2A]:: Returns the value of +self+ raised to the power of the given value.
+ *  - #+:: Returns the sum of +self+ and the given value.
+ *  - #-:: Returns the difference of +self+ and the given value.
+ *  - {/}[#method-i-2F]:: Returns the quotient of +self+ and the given value.
+ *  - #ceil:: Returns the smallest number greater than or equal to +self+.
+ *  - #coerce:: Returns a 2-element array containing the given value converted to a \Float
+                and +self+
+ *  - #divmod:: Returns a 2-element array containing the quotient and remainder
+ *              results of dividing +self+ by the given value.
+ *  - #fdiv:: Returns the Float result of dividing +self+ by the given value.
+ *  - #floor:: Returns the greatest number smaller than or equal to +self+.
+ *  - #next_float:: Returns the next-larger representable \Float.
+ *  - #prev_float:: Returns the next-smaller representable \Float.
+ *  - #quo:: Returns the quotient from dividing +self+ by the given value.
+ *  - #round:: Returns +self+ rounded to the nearest value, to a given precision.
+ *  - #to_i (aliased as #to_int):: Returns +self+ truncated to an Integer.
+ *  - #to_s (aliased as #inspect):: Returns a string containing the place-value
+ *                                  representation of +self+ in the given radix.
+ *  - #truncate:: Returns +self+ truncated to a given precision.
+ *
  */
 
 VALUE
@@ -966,11 +1029,24 @@ rb_float_new_in_heap(double d)
 
 /*
  *  call-seq:
- *     float.to_s  ->  string
+ *    to_s -> string
  *
- *  Returns a string containing a representation of +self+.
- *  As well as a fixed or exponential form of the +float+,
- *  the call may return +NaN+, +Infinity+, and +-Infinity+.
+ *  Returns a string containing a representation of +self+;
+ *  depending of the value of +self+, the string representation
+ *  may contain:
+ *
+ *  - A fixed-point number.
+ *  - A number in "scientific notation" (containing an exponent).
+ *  - 'Infinity'.
+ *  - '-Infinity'.
+ *  - 'NaN' (indicating not-a-number).
+ *
+ *    3.14.to_s         # => "3.14"
+ *    (10.1**50).to_s   # => "1.644631821843879e+50"
+ *    (10.1**500).to_s  # => "Infinity"
+ *    (-10.1**500).to_s # => "-Infinity"
+ *    (0.0/0.0).to_s    # => "NaN"
+ *
  */
 
 static VALUE
@@ -1058,9 +1134,7 @@ flo_to_s(VALUE flt)
  *    f.coerce(2)              # => [2.0, 3.14]
  *    f.coerce(2.0)            # => [2.0, 3.14]
  *    f.coerce(Rational(1, 2)) # => [0.5, 3.14]
- *    f.coerce(Complex(3, 4))  # Raises RangeError.
- *
- *  Related: Numeric#coerce (for other numeric types).
+ *    f.coerce(Complex(1, 0))  # => [1.0, 3.14]
  *
  *  Raises an exception if a type conversion fails.
  *
@@ -1079,10 +1153,17 @@ rb_float_uminus(VALUE flt)
 }
 
 /*
- * call-seq:
- *   float + other  ->  float
+ *  call-seq:
+ *    self + other -> numeric
  *
- * Returns a new Float which is the sum of +float+ and +other+.
+ *  Returns a new \Float which is the sum of +self+ and +other+:
+ *
+ *    f = 3.14
+ *    f + 1                 # => 4.140000000000001
+ *    f + 1.0               # => 4.140000000000001
+ *    f + Rational(1, 1)    # => 4.140000000000001
+ *    f + Complex(1, 0)     # => (4.140000000000001+0i)
+ *
  */
 
 VALUE
@@ -1103,10 +1184,17 @@ rb_float_plus(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float - other  ->  float
+ *  call-seq:
+ *    self - other -> numeric
  *
- * Returns a new Float which is the difference of +float+ and +other+.
+ *  Returns a new \Float which is the difference of +self+ and +other+:
+ *
+ *    f = 3.14
+ *    f - 1                 # => 2.14
+ *    f - 1.0               # => 2.14
+ *    f - Rational(1, 1)    # => 2.14
+ *    f - Complex(1, 0)     # => (2.14+0i)
+ *
  */
 
 VALUE
@@ -1127,10 +1215,16 @@ rb_float_minus(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float * other  ->  float
+ *  call-seq:
+ *    self * other -> numeric
  *
- * Returns a new Float which is the product of +float+ and +other+.
+ *  Returns a new \Float which is the product of +self+ and +other+:
+ *
+ *    f = 3.14
+ *    f * 2              # => 6.28
+ *    f * 2.0            # => 6.28
+ *    f * Rational(1, 2) # => 1.57
+ *    f * Complex(2, 0)  # => (6.28+0.0i)
  */
 
 VALUE
@@ -1175,10 +1269,17 @@ rb_flo_div_flo(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float / other  ->  float
+ *  call-seq:
+ *    self / other -> numeric
  *
- * Returns a new Float which is the result of dividing +float+ by +other+.
+ *  Returns a new \Float which is the result of dividing +self+ by +other+:
+ *
+ *    f = 3.14
+ *    f / 2              # => 1.57
+ *    f / 2.0            # => 1.57
+ *    f / Rational(2, 1) # => 1.57
+ *    f / Complex(2, 0)  # => (1.57+0.0i)
+ *
  */
 
 VALUE
@@ -1207,10 +1308,18 @@ rb_float_div(VALUE x, VALUE y)
 
 /*
  *  call-seq:
- *     float.fdiv(numeric)  ->  float
- *     float.quo(numeric)   ->  float
+ *    quo(other) -> numeric
  *
- *  Returns <code>float / numeric</code>, same as Float#/.
+ *  Returns the quotient from dividing +self+ by +other+:
+ *
+ *    f = 3.14
+ *    f.quo(2)              # => 1.57
+ *    f.quo(-2)             # => -1.57
+ *    f.quo(Rational(2, 1)) # => 1.57
+ *    f.quo(Complex(2, 0))  # => (1.57+0.0i)
+ *
+ *  Float#fdiv is an alias for Float#quo.
+ *
  */
 
 static VALUE
@@ -1381,12 +1490,18 @@ flo_divmod(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *    float ** other  ->  float
+ *  call-seq:
+ *    self ** other -> numeric
  *
- * Raises +float+ to the power of +other+.
+ *  Raises +self+ to the power of +other+:
  *
- *    2.0**3   #=> 8.0
+ *    f = 3.14
+ *    f ** 2              # => 9.8596
+ *    f ** -2             # => 0.1014239928597509
+ *    f ** 2.1            # => 11.054834900588839
+ *    f ** Rational(2, 1) # => 9.8596
+ *    f ** Complex(2, 0)  # => (9.8596+0i)
+ *
  */
 
 VALUE
@@ -1478,15 +1593,19 @@ num_equal(VALUE x, VALUE y)
 
 /*
  *  call-seq:
- *     float == obj  ->  true or false
+ *     self == other -> true or false
  *
- *  Returns +true+ only if +obj+ has the same value as +float+.
- *  Contrast this with Float#eql?, which requires +obj+ to be a Float.
+ *  Returns +true+ if +other+ has the same value as +self+, +false+ otherwise:
  *
- *     1.0 == 1   #=> true
+ *     2.0 == 2              # => true
+ *     2.0 == 2.0            # => true
+ *     2.0 == Rational(2, 1) # => true
+ *     2.0 == Complex(2, 0)  # => true
  *
- *  The result of <code>NaN == NaN</code> is undefined,
- *  so an implementation-dependent value is returned.
+ *  <tt>Float::NAN == Float::NAN</tt> returns an implementation-dependent value.
+ *
+ *  Related: Float#eql? (requires +other+ to be a \Float).
+ *
  */
 
 MJIT_FUNC_EXPORTED VALUE
@@ -1518,9 +1637,9 @@ static VALUE rb_dbl_hash(double d);
 
 /*
  * call-seq:
- *    float.hash  ->  integer
+ *    hash -> integer
  *
- * Returns a hash code for this float.
+ * Returns the integer hash value for +self+.
  *
  * See also Object#hash.
  */
@@ -1549,16 +1668,30 @@ rb_dbl_cmp(double a, double b)
 
 /*
  *  call-seq:
- *     float <=> real  ->  -1, 0, +1, or nil
+ *     self <=> other ->  -1, 0, +1, or nil
  *
- *  Returns -1, 0, or +1 depending on whether +float+ is
- *  less than, equal to, or greater than +real+.
+ *  Returns a value that depends on the numeric relation
+ *  between +self+ and +other+:
+ *
+ *  - -1, if +self+ is less than +other+.
+ *  - 0, if +self+ is equal to +other+.
+ *  - 1, if +self+ is greater than +other+.
+ *  - +nil+, if the two values are incommensurate.
+ *
+ *  Examples:
+ *
+ *    2.0 <=> 2              # => 0
+      2.0 <=> 2.0            # => 0
+      2.0 <=> Rational(2, 1) # => 0
+      2.0 <=> Complex(2, 0)  # => 0
+      2.0 <=> 1.9            # => 1
+      2.0 <=> 2.1            # => -1
+      2.0 <=> 'foo'          # => nil
+ *
  *  This is the basis for the tests in the Comparable module.
  *
- *  The result of <code>NaN <=> NaN</code> is undefined,
- *  so an implementation-dependent value is returned.
+ *  <tt>Float::NAN <=> Float::NAN</tt> returns an implementation-dependent value.
  *
- *  +nil+ is returned if the two values are incomparable.
  */
 
 static VALUE
@@ -1600,13 +1733,18 @@ rb_float_cmp(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float > real  ->  true or false
+ *  call-seq:
+ *    self > other -> true or false
  *
- * Returns +true+ if +float+ is greater than +real+.
+ *  Returns +true+ if +self+ is numerically greater than +other+:
  *
- * The result of <code>NaN > NaN</code> is undefined,
- * so an implementation-dependent value is returned.
+ *    2.0 > 1              # => true
+ *    2.0 > 1.0            # => true
+ *    2.0 > Rational(1, 2) # => true
+ *    2.0 > 2.0            # => false
+ *
+ *  <tt>Float::NAN > Float::NAN</tt> returns an implementation-dependent value.
+ *
  */
 
 VALUE
@@ -1637,13 +1775,19 @@ rb_float_gt(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float >= real  ->  true or false
+ *  call-seq:
+ *    self >= other -> true or false
  *
- * Returns +true+ if +float+ is greater than or equal to +real+.
+ *  Returns +true+ if +self+ is numerically greater than or equal to +other+:
  *
- * The result of <code>NaN >= NaN</code> is undefined,
- * so an implementation-dependent value is returned.
+ *    2.0 >= 1              # => true
+ *    2.0 >= 1.0            # => true
+ *    2.0 >= Rational(1, 2) # => true
+ *    2.0 >= 2.0            # => true
+ *    2.0 >= 2.1            # => false
+ *
+ *  <tt>Float::NAN >= Float::NAN</tt> returns an implementation-dependent value.
+ *
  */
 
 static VALUE
@@ -1674,13 +1818,18 @@ flo_ge(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float < real  ->  true or false
+ *  call-seq:
+ *    self < other -> true or false
  *
- * Returns +true+ if +float+ is less than +real+.
+ *  Returns +true+ if +self+ is numerically less than +other+:
  *
- * The result of <code>NaN < NaN</code> is undefined,
- * so an implementation-dependent value is returned.
+ *    2.0 < 3              # => true
+ *    2.0 < 3.0            # => true
+ *    2.0 < Rational(3, 1) # => true
+ *    2.0 < 2.0            # => false
+ *
+ *  <tt>Float::NAN < Float::NAN</tt> returns an implementation-dependent value.
+ *
  */
 
 static VALUE
@@ -1711,13 +1860,19 @@ flo_lt(VALUE x, VALUE y)
 }
 
 /*
- * call-seq:
- *   float <= real  ->  true or false
+ *  call-seq:
+ *    self <= other -> true or false
  *
- * Returns +true+ if +float+ is less than or equal to +real+.
+ *  Returns +true+ if +self+ is numerically less than or equal to +other+:
  *
- * The result of <code>NaN <= NaN</code> is undefined,
- * so an implementation-dependent value is returned.
+ *    2.0 <= 3              # => true
+ *    2.0 <= 3.0            # => true
+ *    2.0 <= Rational(3, 1) # => true
+ *    2.0 <= 2.0            # => true
+ *    2.0 <= 1.0            # => false
+ *
+ *  <tt>Float::NAN <= Float::NAN</tt> returns an implementation-dependent value.
+ *
  */
 
 static VALUE
@@ -1749,15 +1904,20 @@ flo_le(VALUE x, VALUE y)
 
 /*
  *  call-seq:
- *     float.eql?(obj)  ->  true or false
+ *    eql?(other) -> true or false
  *
- *  Returns +true+ only if +obj+ is a Float with the same value as +float+.
- *  Contrast this with Float#==, which performs type conversions.
+ *  Returns +true+ if +other+ is a \Float with the same value as +self+,
+ *  +false+ otherwise:
  *
- *     1.0.eql?(1)   #=> false
+ *    2.0.eql?(2.0)            # => true
+ *    2.0.eql?(1.0)            # => false
+ *    2.0.eql?(1)              # => false
+ *    2.0.eql?(Rational(2, 1)) # => false
+ *    2.0.eql?(Complex(2, 0))  # => false
  *
- *  The result of <code>NaN.eql?(NaN)</code> is undefined,
- *  so an implementation-dependent value is returned.
+ *  <tt>Float::NAN.eql?(Float::NAN)</tt> returns an implementation-dependent value.
+ *
+ *  Related: Float#== (performs type conversions).
  */
 
 MJIT_FUNC_EXPORTED VALUE
@@ -1785,14 +1945,14 @@ rb_float_abs(VALUE flt)
 
 /*
  *  call-seq:
- *     float.nan?  ->  true or false
+ *    nan? -> true or false
  *
- *  Returns +true+ if +float+ is an invalid IEEE floating point number.
+ *  Returns +true+ if +self+ is a NaN, +false+ otherwise.
  *
- *     a = -1.0      #=> -1.0
- *     a.nan?        #=> false
- *     a = 0.0/0.0   #=> NaN
- *     a.nan?        #=> true
+ *     f = -1.0     #=> -1.0
+ *     f.nan?       #=> false
+ *     f = 0.0/0.0  #=> NaN
+ *     f.nan?       #=> true
  */
 
 static VALUE
@@ -1805,14 +1965,25 @@ flo_is_nan_p(VALUE num)
 
 /*
  *  call-seq:
- *     float.infinite?  ->  -1, 1, or nil
+ *    infinite? -> -1, 1, or nil
  *
- *  Returns +nil+, -1, or 1 depending on whether the value is
- *  finite, <code>-Infinity</code>, or <code>+Infinity</code>.
+ *  Returns:
  *
- *     (0.0).infinite?        #=> nil
- *     (-1.0/0.0).infinite?   #=> -1
- *     (+1.0/0.0).infinite?   #=> 1
+ *  - 1, if +self+ is <tt>Infinity</tt>.
+ *  - -1 if +self+ is <tt>-Infinity</tt>.
+ *  - +nil+, otherwise.
+ *
+ *  Examples:
+ *
+ *    f = 1.0/0.0  # => Infinity
+ *    f.infinite?  # => 1
+ *    f = -1.0/0.0 # => -Infinity
+ *    f.infinite?  # => -1
+ *    f = 1.0      # => 1.0
+ *    f.infinite?  # => nil
+ *    f = 0.0/0.0  # => NaN
+ *    f.infinite?  # => nil
+ *
  */
 
 VALUE
@@ -1829,10 +2000,20 @@ rb_flo_is_infinite_p(VALUE num)
 
 /*
  *  call-seq:
- *     float.finite?  ->  true or false
+ *    finite? -> true or false
  *
- *  Returns +true+ if +float+ is a valid IEEE floating point number,
- *  i.e. it is not infinite and Float#nan? is +false+.
+ *  Returns +true+ if +self+ is not +Infinity+, +-Infinity+, or +Nan+,
+ *  +false+ otherwise:
+ *
+ *    f = 2.0      # => 2.0
+ *    f.finite?    # => true
+ *    f = 1.0/0.0  # => Infinity
+ *    f.finite?    # => false
+ *    f = -1.0/0.0 # => -Infinity
+ *    f.finite?    # => false
+ *    f = 0.0/0.0  # => NaN
+ *    f.finite?    # => false
+ *
  */
 
 VALUE
@@ -1854,55 +2035,47 @@ flo_nextafter(VALUE flo, double value)
 
 /*
  *  call-seq:
- *     float.next_float  ->  float
+ *    next_float -> float
  *
- *  Returns the next representable floating point number.
+ *  Returns the next-larger representable \Float.
  *
- *  Float::MAX.next_float and Float::INFINITY.next_float is Float::INFINITY.
+ *  These examples show the internally stored values (64-bit hexadecimal)
+ *  for each \Float +f+ and for the corresponding <tt>f.next_float</tt>:
  *
- *  Float::NAN.next_float is Float::NAN.
+ *    f = 0.0      # 0x0000000000000000
+ *    f.next_float # 0x0000000000000001
  *
- *  For example:
+ *    f = 0.01     # 0x3f847ae147ae147b
+ *    f.next_float # 0x3f847ae147ae147c
  *
- *    0.01.next_float    #=> 0.010000000000000002
- *    1.0.next_float     #=> 1.0000000000000002
- *    100.0.next_float   #=> 100.00000000000001
+ *  In the remaining examples here, the output is shown in the usual way
+ *  (result +to_s+):
  *
- *    0.01.next_float - 0.01     #=> 1.734723475976807e-18
- *    1.0.next_float - 1.0       #=> 2.220446049250313e-16
- *    100.0.next_float - 100.0   #=> 1.4210854715202004e-14
+ *    0.01.next_float    # => 0.010000000000000002
+ *    1.0.next_float     # => 1.0000000000000002
+ *    100.0.next_float   # => 100.00000000000001
  *
- *    f = 0.01; 20.times { printf "%-20a %s\n", f, f.to_s; f = f.next_float }
- *    #=> 0x1.47ae147ae147bp-7 0.01
- *    #   0x1.47ae147ae147cp-7 0.010000000000000002
- *    #   0x1.47ae147ae147dp-7 0.010000000000000004
- *    #   0x1.47ae147ae147ep-7 0.010000000000000005
- *    #   0x1.47ae147ae147fp-7 0.010000000000000007
- *    #   0x1.47ae147ae148p-7  0.010000000000000009
- *    #   0x1.47ae147ae1481p-7 0.01000000000000001
- *    #   0x1.47ae147ae1482p-7 0.010000000000000012
- *    #   0x1.47ae147ae1483p-7 0.010000000000000014
- *    #   0x1.47ae147ae1484p-7 0.010000000000000016
- *    #   0x1.47ae147ae1485p-7 0.010000000000000018
- *    #   0x1.47ae147ae1486p-7 0.01000000000000002
- *    #   0x1.47ae147ae1487p-7 0.010000000000000021
- *    #   0x1.47ae147ae1488p-7 0.010000000000000023
- *    #   0x1.47ae147ae1489p-7 0.010000000000000024
- *    #   0x1.47ae147ae148ap-7 0.010000000000000026
- *    #   0x1.47ae147ae148bp-7 0.010000000000000028
- *    #   0x1.47ae147ae148cp-7 0.01000000000000003
- *    #   0x1.47ae147ae148dp-7 0.010000000000000031
- *    #   0x1.47ae147ae148ep-7 0.010000000000000033
+ *    f = 0.01
+ *    (0..3).each_with_index {|i| printf "%2d %-20a %s\n", i, f, f.to_s; f = f.next_float }
  *
- *    f = 0.0
- *    100.times { f += 0.1 }
- *    f                           #=> 9.99999999999998       # should be 10.0 in the ideal world.
- *    10-f                        #=> 1.9539925233402755e-14 # the floating point error.
- *    10.0.next_float-10          #=> 1.7763568394002505e-15 # 1 ulp (unit in the last place).
- *    (10-f)/(10.0.next_float-10) #=> 11.0                   # the error is 11 ulp.
- *    (10-f)/(10*Float::EPSILON)  #=> 8.8                    # approximation of the above.
- *    "%a" % 10                   #=> "0x1.4p+3"
- *    "%a" % f                    #=> "0x1.3fffffffffff5p+3" # the last hex digit is 5.  16 - 5 = 11 ulp.
+ *  Output:
+ *
+ *     0 0x1.47ae147ae147bp-7 0.01
+ *     1 0x1.47ae147ae147cp-7 0.010000000000000002
+ *     2 0x1.47ae147ae147dp-7 0.010000000000000004
+ *     3 0x1.47ae147ae147ep-7 0.010000000000000005
+ *
+ *    f = 0.0; 100.times { f += 0.1 }
+ *    f                           # => 9.99999999999998       # should be 10.0 in the ideal world.
+ *    10-f                        # => 1.9539925233402755e-14 # the floating point error.
+ *    10.0.next_float-10          # => 1.7763568394002505e-15 # 1 ulp (unit in the last place).
+ *    (10-f)/(10.0.next_float-10) # => 11.0                   # the error is 11 ulp.
+ *    (10-f)/(10*Float::EPSILON)  # => 8.8                    # approximation of the above.
+ *    "%a" % 10                   # => "0x1.4p+3"
+ *    "%a" % f                    # => "0x1.3fffffffffff5p+3" # the last hex digit is 5.  16 - 5 = 11 ulp.
+ *
+ *  Related: Float#prev_float
+ *
  */
 static VALUE
 flo_next_float(VALUE vx)
@@ -1914,43 +2087,36 @@ flo_next_float(VALUE vx)
  *  call-seq:
  *     float.prev_float  ->  float
  *
- *  Returns the previous representable floating point number.
+ *  Returns the next-smaller representable \Float.
  *
- *  (-Float::MAX).prev_float and (-Float::INFINITY).prev_float is -Float::INFINITY.
+ *  These examples show the internally stored values (64-bit hexadecimal)
+ *  for each \Float +f+ and for the corresponding <tt>f.pev_float</tt>:
  *
- *  Float::NAN.prev_float is Float::NAN.
+ *    f = 5e-324   # 0x0000000000000001
+ *    f.prev_float # 0x0000000000000000
  *
- *  For example:
+ *    f = 0.01     # 0x3f847ae147ae147b
+ *    f.prev_float # 0x3f847ae147ae147a
  *
- *    0.01.prev_float    #=> 0.009999999999999998
- *    1.0.prev_float     #=> 0.9999999999999999
- *    100.0.prev_float   #=> 99.99999999999999
+ *  In the remaining examples here, the output is shown in the usual way
+ *  (result +to_s+):
  *
- *    0.01 - 0.01.prev_float     #=> 1.734723475976807e-18
- *    1.0 - 1.0.prev_float       #=> 1.1102230246251565e-16
- *    100.0 - 100.0.prev_float   #=> 1.4210854715202004e-14
+ *    0.01.prev_float   # => 0.009999999999999998
+ *    1.0.prev_float    # => 0.9999999999999999
+ *    100.0.prev_float  # => 99.99999999999999
  *
- *    f = 0.01; 20.times { printf "%-20a %s\n", f, f.to_s; f = f.prev_float }
- *    #=> 0x1.47ae147ae147bp-7 0.01
- *    #   0x1.47ae147ae147ap-7 0.009999999999999998
- *    #   0x1.47ae147ae1479p-7 0.009999999999999997
- *    #   0x1.47ae147ae1478p-7 0.009999999999999995
- *    #   0x1.47ae147ae1477p-7 0.009999999999999993
- *    #   0x1.47ae147ae1476p-7 0.009999999999999992
- *    #   0x1.47ae147ae1475p-7 0.00999999999999999
- *    #   0x1.47ae147ae1474p-7 0.009999999999999988
- *    #   0x1.47ae147ae1473p-7 0.009999999999999986
- *    #   0x1.47ae147ae1472p-7 0.009999999999999985
- *    #   0x1.47ae147ae1471p-7 0.009999999999999983
- *    #   0x1.47ae147ae147p-7  0.009999999999999981
- *    #   0x1.47ae147ae146fp-7 0.00999999999999998
- *    #   0x1.47ae147ae146ep-7 0.009999999999999978
- *    #   0x1.47ae147ae146dp-7 0.009999999999999976
- *    #   0x1.47ae147ae146cp-7 0.009999999999999974
- *    #   0x1.47ae147ae146bp-7 0.009999999999999972
- *    #   0x1.47ae147ae146ap-7 0.00999999999999997
- *    #   0x1.47ae147ae1469p-7 0.009999999999999969
- *    #   0x1.47ae147ae1468p-7 0.009999999999999967
+ *    f = 0.01
+ *    (0..3).each_with_index {|i| printf "%2d %-20a %s\n", i, f, f.to_s; f = f.prev_float }
+ *
+ *  Output:
+ *
+ *     0 0x1.47ae147ae147bp-7 0.01
+ *     1 0x1.47ae147ae147ap-7 0.009999999999999998
+ *     2 0x1.47ae147ae1479p-7 0.009999999999999997
+ *     3 0x1.47ae147ae1478p-7 0.009999999999999995
+ *
+ *  Related: Float#next_float.
+ *
  */
 static VALUE
 flo_prev_float(VALUE vx)
@@ -1987,45 +2153,6 @@ rb_float_floor(VALUE num, int ndigits)
     }
 }
 
-/*
- *  call-seq:
- *     float.floor([ndigits])  ->  integer or float
- *
- *  Returns the largest number less than or equal to +float+ with
- *  a precision of +ndigits+ decimal digits (default: 0).
- *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
- *
- *  Returns a floating point number when +ndigits+ is positive,
- *  otherwise returns an integer.
- *
- *     1.2.floor      #=> 1
- *     2.0.floor      #=> 2
- *     (-1.2).floor   #=> -2
- *     (-2.0).floor   #=> -2
- *
- *     1.234567.floor(2)   #=> 1.23
- *     1.234567.floor(3)   #=> 1.234
- *     1.234567.floor(4)   #=> 1.2345
- *     1.234567.floor(5)   #=> 1.23456
- *
- *     34567.89.floor(-5)  #=> 0
- *     34567.89.floor(-4)  #=> 30000
- *     34567.89.floor(-3)  #=> 34000
- *     34567.89.floor(-2)  #=> 34500
- *     34567.89.floor(-1)  #=> 34560
- *     34567.89.floor(0)   #=> 34567
- *     34567.89.floor(1)   #=> 34567.8
- *     34567.89.floor(2)   #=> 34567.89
- *     34567.89.floor(3)   #=> 34567.89
- *
- *  Note that the limited precision of floating point arithmetic
- *  might lead to surprising results:
- *
- *     (0.3 / 0.1).floor  #=> 2 (!)
- */
-
 static int
 flo_ndigits(int argc, VALUE *argv)
 {
@@ -2034,6 +2161,42 @@ flo_ndigits(int argc, VALUE *argv)
     }
     return 0;
 }
+
+/*
+ *  call-seq:
+ *    floor(ndigits = 0) -> float or integer
+ *
+ *  Returns the largest number less than or equal to +self+ with
+ *  a precision of +ndigits+ decimal digits.
+ *
+ *  When +ndigits+ is positive, returns a float with +ndigits+
+ *  digits after the decimal point (as available):
+ *
+ *    f = 12345.6789
+ *    f.floor(1) # => 12345.6
+ *    f.floor(3) # => 12345.678
+ *    f = -12345.6789
+ *    f.floor(1) # => -12345.7
+ *    f.floor(3) # => -12345.679
+ *
+ *  When +ndigits+ is non-positive, returns an integer with at least
+ *  <code>ndigits.abs</code> trailing zeros:
+ *
+ *    f = 12345.6789
+ *    f.floor(0)  # => 12345
+ *    f.floor(-3) # => 12000
+ *    f = -12345.6789
+ *    f.floor(0)  # => -12346
+ *    f.floor(-3) # => -13000
+ *
+ *  Note that the limited precision of floating-point arithmetic
+ *  may lead to surprising results:
+ *
+ *     (0.3 / 0.1).floor  #=> 2 (!)
+ *
+ *  Related: Float#ceil.
+ *
+ */
 
 static VALUE
 flo_floor(int argc, VALUE *argv, VALUE num)
@@ -2044,41 +2207,38 @@ flo_floor(int argc, VALUE *argv, VALUE num)
 
 /*
  *  call-seq:
- *     float.ceil([ndigits])  ->  integer or float
+ *    ceil(ndigits = 0) -> float or integer
  *
- *  Returns the smallest number greater than or equal to +float+ with
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns the smallest number greater than or equal to +self+ with
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is positive, returns a float with +ndigits+
+ *  digits after the decimal point (as available):
  *
- *  Returns a floating point number when +ndigits+ is positive,
- *  otherwise returns an integer.
+ *    f = 12345.6789
+ *    f.ceil(1) # => 12345.7
+ *    f.ceil(3) # => 12345.679
+ *    f = -12345.6789
+ *    f.ceil(1) # => -12345.6
+ *    f.ceil(3) # => -12345.678
  *
- *     1.2.ceil      #=> 2
- *     2.0.ceil      #=> 2
- *     (-1.2).ceil   #=> -1
- *     (-2.0).ceil   #=> -2
+ *  When +ndigits+ is non-positive, returns an integer with at least
+ *  <code>ndigits.abs</code> trailing zeros:
  *
- *     1.234567.ceil(2)   #=> 1.24
- *     1.234567.ceil(3)   #=> 1.235
- *     1.234567.ceil(4)   #=> 1.2346
- *     1.234567.ceil(5)   #=> 1.23457
+ *    f = 12345.6789
+ *    f.ceil(0)  # => 12346
+ *    f.ceil(-3) # => 13000
+ *    f = -12345.6789
+ *    f.ceil(0)  # => -12345
+ *    f.ceil(-3) # => -12000
  *
- *     34567.89.ceil(-5)  #=> 100000
- *     34567.89.ceil(-4)  #=> 40000
- *     34567.89.ceil(-3)  #=> 35000
- *     34567.89.ceil(-2)  #=> 34600
- *     34567.89.ceil(-1)  #=> 34570
- *     34567.89.ceil(0)   #=> 34568
- *     34567.89.ceil(1)   #=> 34567.9
- *     34567.89.ceil(2)   #=> 34567.89
- *     34567.89.ceil(3)   #=> 34567.89
- *
- *  Note that the limited precision of floating point arithmetic
- *  might lead to surprising results:
+ *  Note that the limited precision of floating-point arithmetic
+ *  may lead to surprising results:
  *
  *     (2.1 / 0.7).ceil  #=> 4 (!)
+ *
+ *  Related: Float#floor.
+ *
  */
 
 static VALUE
@@ -2287,54 +2447,57 @@ rb_int_truncate(VALUE num, int ndigits)
 
 /*
  *  call-seq:
- *     float.round([ndigits] [, half: mode])  ->  integer or float
+ *    round(ndigits = 0, half: :up]) -> integer or float
  *
- *  Returns +float+ rounded to the nearest value with
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns +self+ rounded to the nearest value with
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is non-negative, returns a float with +ndigits+
+ *  after the decimal point (as available):
  *
- *  Returns a floating point number when +ndigits+ is positive,
- *  otherwise returns an integer.
+ *    f = 12345.6789
+ *    f.round(1) # => 12345.7
+ *    f.round(3) # => 12345.679
+ *    f = -12345.6789
+ *    f.round(1) # => -12345.7
+ *    f.round(3) # => -12345.679
  *
- *     1.4.round      #=> 1
- *     1.5.round      #=> 2
- *     1.6.round      #=> 2
- *     (-1.5).round   #=> -2
+ *  When +ndigits+ is negative, returns an integer
+ *  with at least <tt>ndigits.abs</tt> trailing zeros:
  *
- *     1.234567.round(2)   #=> 1.23
- *     1.234567.round(3)   #=> 1.235
- *     1.234567.round(4)   #=> 1.2346
- *     1.234567.round(5)   #=> 1.23457
+ *    f = 12345.6789
+ *    f.round(0)  # => 12346
+ *    f.round(-3) # => 12000
+ *    f = -12345.6789
+ *    f.round(0)  # => -12346
+ *    f.round(-3) # => -12000
  *
- *     34567.89.round(-5)  #=> 0
- *     34567.89.round(-4)  #=> 30000
- *     34567.89.round(-3)  #=> 35000
- *     34567.89.round(-2)  #=> 34600
- *     34567.89.round(-1)  #=> 34570
- *     34567.89.round(0)   #=> 34568
- *     34567.89.round(1)   #=> 34567.9
- *     34567.89.round(2)   #=> 34567.89
- *     34567.89.round(3)   #=> 34567.89
+ *  If keyword argument +half+ is given,
+ *  and +self+ is equidistant from the two candidate values,
+ *  the rounding is according to the given +half+ value:
  *
- *  If the optional +half+ keyword argument is given,
- *  numbers that are half-way between two possible rounded values
- *  will be rounded according to the specified tie-breaking +mode+:
+ *  - +:up+ or +nil+: round away from zero:
  *
- *  * <code>:up</code> or +nil+: round half away from zero (default)
- *  * <code>:down</code>: round half toward zero
- *  * <code>:even</code>: round half toward the nearest even number
+ *      2.5.round(half: :up)      # => 3
+ *      3.5.round(half: :up)      # => 4
+ *      (-2.5).round(half: :up)   # => -3
  *
- *     2.5.round(half: :up)      #=> 3
- *     2.5.round(half: :down)    #=> 2
- *     2.5.round(half: :even)    #=> 2
- *     3.5.round(half: :up)      #=> 4
- *     3.5.round(half: :down)    #=> 3
- *     3.5.round(half: :even)    #=> 4
- *     (-2.5).round(half: :up)   #=> -3
- *     (-2.5).round(half: :down) #=> -2
- *     (-2.5).round(half: :even) #=> -2
+ *  - +:down+: round toward zero:
+ *
+ *      2.5.round(half: :down)    # => 2
+ *      3.5.round(half: :down)    # => 3
+ *      (-2.5).round(half: :down) # => -2
+ *
+ *  - +:even+: round toward the candidate whose last nonzero digit is even:
+ *
+ *      2.5.round(half: :even)    # => 2
+ *      3.5.round(half: :even)    # => 4
+ *      (-2.5).round(half: :even) # => -2
+ *
+ *  Raises and exception if the value for +half+ is invalid.
+ *
+ *  Related: Float#truncate.
+ *
  */
 
 static VALUE
@@ -2415,20 +2578,19 @@ float_round_underflow(int ndigits, int binexp)
 
 /*
  *  call-seq:
- *     float.to_i    ->  integer
- *     float.to_int  ->  integer
+ *    to_i -> integer
  *
- *  Returns the +float+ truncated to an Integer.
+ *  Returns +self+ truncated to an Integer.
  *
- *     1.2.to_i      #=> 1
- *     (-1.2).to_i   #=> -1
+ *    1.2.to_i    # => 1
+ *    (-1.2).to_i # => -1
  *
- *  Note that the limited precision of floating point arithmetic
- *  might lead to surprising results:
+ *  Note that the limited precision of floating-point arithmetic
+ *  may lead to surprising results:
  *
- *    (0.3 / 0.1).to_i  #=> 2 (!)
+ *    (0.3 / 0.1).to_i  # => 2 (!)
  *
- *  #to_int is an alias for #to_i.
+ *  Float#to_int is an alias for Float#to_i.
  */
 
 static VALUE
@@ -2444,26 +2606,38 @@ flo_to_i(VALUE num)
 
 /*
  *  call-seq:
- *     float.truncate([ndigits])  ->  integer or float
+ *    truncate(ndigits = 0) -> float or integer
  *
- *  Returns +float+ truncated (toward zero) to
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns +self+ truncated (toward zero) to
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is positive, returns a float with +ndigits+ digits
+ *  after the decimal point (as available):
  *
- *  Returns a floating point number when +ndigits+ is positive,
- *  otherwise returns an integer.
+ *    f = 12345.6789
+ *    f.truncate(1) # => 12345.6
+ *    f.truncate(3) # => 12345.678
+ *    f = -12345.6789
+ *    f.truncate(1) # => -12345.6
+ *    f.truncate(3) # => -12345.678
  *
- *     2.8.truncate           #=> 2
- *     (-2.8).truncate        #=> -2
- *     1.234567.truncate(2)   #=> 1.23
- *     34567.89.truncate(-2)  #=> 34500
+ *  When +ndigits+ is negative, returns an integer
+ *  with at least <tt>ndigits.abs</tt> trailing zeros:
  *
- *  Note that the limited precision of floating point arithmetic
- *  might lead to surprising results:
+ *    f = 12345.6789
+ *    f.truncate(0)  # => 12345
+ *    f.truncate(-3) # => 12000
+ *    f = -12345.6789
+ *    f.truncate(0)  # => -12345
+ *    f.truncate(-3) # => -12000
+ *
+ *  Note that the limited precision of floating-point arithmetic
+ *  may lead to surprising results:
  *
  *     (0.3 / 0.1).truncate  #=> 2 (!)
+ *
+ *  Related: Float#round.
+ *
  */
 static VALUE
 flo_truncate(int argc, VALUE *argv, VALUE num)
@@ -2546,7 +2720,7 @@ double
 ruby_float_step_size(double beg, double end, double unit, int excl)
 {
     const double epsilon = DBL_EPSILON;
-    double n, err;
+    double d, n, err;
 
     if (unit == 0) {
         return HUGE_VAL;
@@ -2563,24 +2737,26 @@ ruby_float_step_size(double beg, double end, double unit, int excl)
 	    n = 0;
 	else
 	    n = floor(n - err);
+        d = +((n + 1) * unit) + beg;
         if (beg < end) {
-            if ((n+1)*unit+beg < end)
+            if (d < end)
                 n++;
         }
         else if (beg > end) {
-            if ((n+1)*unit+beg > end)
+            if (d > end)
                 n++;
         }
     }
     else {
 	if (n<0) return 0;
 	n = floor(n + err);
+        d = +((n + 1) * unit) + beg;
         if (beg < end) {
-            if ((n+1)*unit+beg <= end)
+            if (d <= end)
                 n++;
         }
         else if (beg > end) {
-            if ((n+1)*unit+beg >= end)
+            if (d >= end)
                n++;
         }
     }
@@ -3299,8 +3475,92 @@ rb_num2ull(VALUE val)
  *
  * Document-class: Integer
  *
- *  Holds Integer values.  You cannot add a singleton method to an
- *  Integer object, any attempt to do so will raise a TypeError.
+ * An \Integer object represents an integer value.
+ *
+ * You can create an \Integer object explicitly with:
+ *
+ * - Global method {Integer}[Kernel.html#method-i-Integer].
+ * - An {integer literal}[doc/syntax/literals_rdoc.html#label-Integer+Literals].
+ *
+ * An attempt to add a singleton method to an instance of this class
+ * causes an exception to be raised.
+ *
+ * == What's Here
+ *
+ * First, what's elsewhere. \Class \Integer:
+ *
+ * - Inherits from {class Numeric}[Numeric.html#class-Numeric-label-What-27s+Here].
+ *
+ * Here, class \Integer provides methods for:
+ *
+ * - {Querying}[#class-Integer-label-Querying]
+ * - {Comparing}[#class-Integer-label-Comparing]
+ * - {Converting}[#class-Integer-label-Converting]
+ * - {Other}[#class-Integer-label-Other]
+ *
+ * === Querying
+ *
+ * - #allbits?:: Returns whether all bits in +self+ are set.
+ * - #anybits?:: Returns whether any bits in +self+ are set.
+ * - #nobits?:: Returns whether no bits in +self+ are set.
+ *
+ * === Comparing
+ *
+ * - {<}[#method-i-3C]:: Returns whether +self+ is less than the given value.
+ * - {<=}[#method-i-3C-3D]:: Returns whether +self+ is less than
+ *                           or equal to the given value.
+ * - {<=>}[#method-i-3C-3D-3E]:: Returns a number indicating whether +self+ is less than,
+ *                               equal to, or greater than the given value.
+ * - {==}[#method-i-3D-3D] (aliased as #===):: Returns whether +self+ is
+ *                                             equal to the given value.
+ * - {>}[#method-i-3E]:: Returns whether +self+ is greater than the given value.
+ * - {>=}[#method-i-3E-3D]:: Returns whether +self+ is greater than
+ *                           or equal to the given value.
+ *
+ * === Converting
+ *
+ * - ::sqrt:: Returns the integer square root of the given value.
+ * - ::try_convert:: Returns the given value converted to an \Integer.
+ * - #% (aliased as #modulo):: Returns +self+ modulo the given value.
+ * - {&}[#method-i-26]:: Returns the bitwise AND of +self+ and the given value.
+ * - #*:: Returns the product of +self+ and the given value.
+ * - {**}[#method-i-2A-2A]:: Returns the value of +self+ raised to the power of the given value.
+ * - #+:: Returns the sum of +self+ and the given value.
+ * - #-:: Returns the difference of +self+ and the given value.
+ * - {/}[#method-i-2F]:: Returns the quotient of +self+ and the given value.
+ * - #<<:: Returns the value of +self+ after a leftward bit-shift.
+ * - #>>:: Returns the value of +self+ after a rightward bit-shift.
+ * - #[]:: Returns a slice of bits from +self+.
+ * - {^}[#method-i-5E]:: Returns the bitwise EXCLUSIVE OR of +self+ and the given value.
+ * - #ceil:: Returns the smallest number greater than or equal to +self+.
+ * - #chr:: Returns a 1-character string containing the character
+ *          represented by the value of +self+.
+ * - #digits:: Returns an array of integers representing the base-radix digits
+ *             of +self+.
+ * - #div:: Returns the integer result of dividing +self+ by the given value.
+ * - #divmod:: Returns a 2-element array containing the quotient and remainder
+ *             results of dividing +self+ by the given value.
+ * - #fdiv:: Returns the Float result of dividing +self+ by the given value.
+ * - #floor:: Returns the greatest number smaller than or equal to +self+.
+ * - #pow:: Returns the modular exponentiation of +self+.
+ * - #pred:: Returns the integer predecessor of +self+.
+ * - #remainder:: Returns the remainder after dividing +self+ by the given value.
+ * - #round:: Returns +self+ rounded to the nearest value with the given precision.
+ * - #succ (aliased as #next):: Returns the integer successor of +self+.
+ * - #to_f:: Returns +self+ converted to a Float.
+ * - #to_s (aliased as #inspect):: Returns a string containing the place-value
+ *                                 representation of +self+ in the given radix.
+ * - #truncate:: Returns +self+ truncated to the given precision.
+ * - {/}[#method-i-7C]:: Returns the bitwise OR of +self+ and the given value.
+ *
+ * === Other
+ *
+ * - #downto:: Calls the given block with each integer value from +self+
+ *             down to the given value.
+ * - #times:: Calls the given block +self+ times with each integer
+ *            in <tt>(0..self-1)</tt>.
+ * - #upto:: Calls the given block with each integer value from +self+
+ *           up to the given value.
  *
  */
 
@@ -3336,9 +3596,25 @@ rb_int_even_p(VALUE num)
 
 /*
  *  call-seq:
- *     int.allbits?(mask)  ->  true or false
+ *    allbits?(mask) -> true or false
  *
- *  Returns +true+ if all bits of <code>+int+ & +mask+</code> are 1.
+ *  Returns +true+ if all bits that are set (=1) in +mask+
+ *  are also set in +self+; returns +false+ otherwise.
+ *
+ *  Example values:
+ *
+ *    0b1010101  self
+ *    0b1010100  mask
+ *    0b1010100  self & mask
+ *         true  self.allbits?(mask)
+ *
+ *    0b1010100  self
+ *    0b1010101  mask
+ *    0b1010100  self & mask
+ *        false  self.allbits?(mask)
+ *
+ *  Related: Integer#anybits?, Integer#nobits?.
+ *
  */
 
 static VALUE
@@ -3350,9 +3626,25 @@ int_allbits_p(VALUE num, VALUE mask)
 
 /*
  *  call-seq:
- *     int.anybits?(mask)  ->  true or false
+ *    anybits?(mask) -> true or false
  *
- *  Returns +true+ if any bits of <code>+int+ & +mask+</code> are 1.
+ *  Returns +true+ if any bit that is set (=1) in +mask+
+ *  is also set in +self+; returns +false+ otherwise.
+ *
+ *  Example values:
+ *
+ *    0b10000010  self
+ *    0b11111111  mask
+ *    0b10000010  self & mask
+ *          true  self.anybits?(mask)
+ *
+ *    0b00000000  self
+ *    0b11111111  mask
+ *    0b00000000  self & mask
+ *         false  self.anybits?(mask)
+ *
+ *  Related: Integer#allbits?, Integer#nobits?.
+ *
  */
 
 static VALUE
@@ -3364,9 +3656,25 @@ int_anybits_p(VALUE num, VALUE mask)
 
 /*
  *  call-seq:
- *     int.nobits?(mask)  ->  true or false
+ *    nobits?(mask) -> true or false
  *
- *  Returns +true+ if no bits of <code>+int+ & +mask+</code> are 1.
+ *  Returns +true+ if no bit that is set (=1) in +mask+
+ *  is also set in +self+; returns +false+ otherwise.
+ *
+ *  Example values:
+ *
+ *    0b11110000  self
+ *    0b00001111  mask
+ *    0b00000000  self & mask
+ *          true  self.nobits?(mask)
+ *
+ *    0b00000001  self
+ *    0b11111111  mask
+ *    0b00000001  self & mask
+ *         false  self.nobits?(mask)
+ *
+ *  Related: Integer#allbits?, Integer#anybits?.
+ *
  */
 
 static VALUE
@@ -3377,19 +3685,17 @@ int_nobits_p(VALUE num, VALUE mask)
 }
 
 /*
- *  Document-method: Integer#succ
- *  Document-method: Integer#next
  *  call-seq:
- *     int.next  ->  integer
- *     int.succ  ->  integer
+ *    succ -> next_integer
  *
- *  Returns the successor of +int+,
- *  i.e. the Integer equal to <code>int+1</code>.
+ *  Returns the successor integer of +self+ (equivalent to <tt>self + 1</tt>):
  *
- *     1.next      #=> 2
- *     (-1).next   #=> 0
- *     1.succ      #=> 2
- *     (-1).succ   #=> 0
+ *    1.succ  #=> 2
+ *    -1.succ #=> 0
+ *
+ *  Integer#next is an alias for Integer#succ.
+ *
+ *  Related: Integer#pred (predecessor value).
  */
 
 VALUE
@@ -3409,13 +3715,15 @@ rb_int_succ(VALUE num)
 
 /*
  *  call-seq:
- *     int.pred  ->  integer
+ *    pred -> next_integer
  *
- *  Returns the predecessor of +int+,
- *  i.e. the Integer equal to <code>int-1</code>.
+ *  Returns the predecessor of +self+ (equivalent to <tt>self - 1</tt>):
  *
- *     1.pred      #=> 0
- *     (-1).pred   #=> -2
+ *    1.pred  #=> 0
+ *    -1.pred #=> -2
+ *
+ *  Related: Integer#succ (successor value).
+ *
  */
 
 static VALUE
@@ -3432,19 +3740,6 @@ rb_int_pred(VALUE num)
 }
 
 #define int_pred rb_int_pred
-
-/*
- *  Document-method: Integer#chr
- *  call-seq:
- *     int.chr([encoding])  ->  string
- *
- *  Returns a string containing the character represented by the +int+'s value
- *  according to +encoding+.
- *
- *     65.chr    #=> "A"
- *     230.chr   #=> "\xE6"
- *     255.chr(Encoding::UTF_8)   #=> "\u00FF"
- */
 
 VALUE
 rb_enc_uint_chr(unsigned int code, rb_encoding *enc)
@@ -3467,6 +3762,25 @@ rb_enc_uint_chr(unsigned int code, rb_encoding *enc)
     }
     return str;
 }
+
+/*  call-seq:
+ *   chr           -> string
+ *   chr(encoding) -> string
+ *
+ *  Returns a 1-character string containing the character
+ *  represented by the value of +self+, according to the given +encoding+.
+ *
+ *    65.chr                   # => "A"
+ *    0..chr                   # => "\x00"
+ *    255.chr                  # => "\xFF"
+ *    string = 255.chr(Encoding::UTF_8)
+ *    string.encoding          # => Encoding::UTF_8
+ *
+ *  Raises an exception if +self+ is negative.
+ *
+ *  Related: Integer#ord.
+ *
+ */
 
 static VALUE
 int_chr(int argc, VALUE *argv, VALUE num)
@@ -3533,23 +3847,6 @@ rb_int_uminus(VALUE num)
     }
 }
 
-/*
- *  Document-method: Integer#to_s
- *  call-seq:
- *     int.to_s(base=10)  ->  string
- *
- *  Returns a string containing the place-value representation of +int+
- *  with radix +base+ (between 2 and 36).
- *
- *     12345.to_s       #=> "12345"
- *     12345.to_s(2)    #=> "11000000111001"
- *     12345.to_s(8)    #=> "30071"
- *     12345.to_s(10)   #=> "12345"
- *     12345.to_s(16)   #=> "3039"
- *     12345.to_s(36)   #=> "9ix"
- *     78546939656932.to_s(36)  #=> "rubyrules"
- */
-
 VALUE
 rb_fix2str(VALUE x, int base)
 {
@@ -3592,8 +3889,41 @@ rb_fix2str(VALUE x, int base)
     return rb_usascii_str_new(b, e - b);
 }
 
-static VALUE
-int_to_s(int argc, VALUE *argv, VALUE x)
+static VALUE rb_fix_to_s_static[10];
+
+MJIT_FUNC_EXPORTED VALUE
+rb_fix_to_s(VALUE x)
+{
+    long i = FIX2LONG(x);
+    if (i >= 0 && i < 10) {
+        return rb_fix_to_s_static[i];
+    }
+    return rb_fix2str(x, 10);
+}
+
+/*
+ *  call-seq:
+ *    to_s(base = 10)  ->  string
+ *
+ *  Returns a string containing the place-value representation of +self+
+ *  in radix +base+ (in 2..36).
+ *
+ *    12345.to_s               # => "12345"
+ *    12345.to_s(2)            # => "11000000111001"
+ *    12345.to_s(8)            # => "30071"
+ *    12345.to_s(10)           # => "12345"
+ *    12345.to_s(16)           # => "3039"
+ *    12345.to_s(36)           # => "9ix"
+ *    78546939656932.to_s(36)  # => "rubyrules"
+ *
+ *  Raises an exception if +base+ is out of range.
+ *
+ *  Integer#inspect is an alias for Integer#to_s.
+ *
+ */
+
+MJIT_FUNC_EXPORTED VALUE
+rb_int_to_s(int argc, VALUE *argv, VALUE x)
 {
     int base;
 
@@ -3616,15 +3946,6 @@ rb_int2str(VALUE x, int base)
 
     return rb_any_to_s(x);
 }
-
-/*
- * Document-method: Integer#+
- * call-seq:
- *    int + numeric  ->  numeric_result
- *
- * Performs addition: the class of the resulting object depends on
- * the class of +numeric+.
- */
 
 static VALUE
 fix_plus(VALUE x, VALUE y)
@@ -3652,6 +3973,21 @@ rb_fix_plus(VALUE x, VALUE y)
     return fix_plus(x, y);
 }
 
+/*
+ *  call-seq:
+ *    self + numeric -> numeric_result
+ *
+ *  Performs addition:
+ *
+ *    2 + 2              # => 4
+ *    -2 + 2             # => 0
+ *    -2 + -2            # => -4
+ *    2 + 2.0            # => 4.0
+ *    2 + Rational(2, 1) # => (4/1)
+ *    2 + Complex(2, 0)  # => (4+0i)
+ *
+ */
+
 VALUE
 rb_int_plus(VALUE x, VALUE y)
 {
@@ -3663,15 +3999,6 @@ rb_int_plus(VALUE x, VALUE y)
     }
     return rb_num_coerce_bin(x, y, '+');
 }
-
-/*
- * Document-method: Integer#-
- * call-seq:
- *    int - numeric  ->  numeric_result
- *
- * Performs subtraction: the class of the resulting object depends on
- * the class of +numeric+.
- */
 
 static VALUE
 fix_minus(VALUE x, VALUE y)
@@ -3691,6 +4018,21 @@ fix_minus(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self - numeric -> numeric_result
+ *
+ *  Performs subtraction:
+ *
+ *    4 - 2              # => 2
+ *    -4 - 2             # => -6
+ *    -4 - -2            # => -2
+ *    4 - 2.0            # => 2.0
+ *    4 - Rational(2, 1) # => (2/1)
+ *    4 - Complex(2, 0)  # => (2+0i)
+ *
+ */
+
 VALUE
 rb_int_minus(VALUE x, VALUE y)
 {
@@ -3707,15 +4049,6 @@ rb_int_minus(VALUE x, VALUE y)
 #define SQRT_LONG_MAX HALF_LONG_MSB
 /*tests if N*N would overflow*/
 #define FIT_SQRT_LONG(n) (((n)<SQRT_LONG_MAX)&&((n)>=-SQRT_LONG_MAX))
-
-/*
- * Document-method: Integer#*
- * call-seq:
- *    int * numeric  ->  numeric_result
- *
- * Performs multiplication: the class of the resulting object depends on
- * the class of +numeric+.
- */
 
 static VALUE
 fix_mul(VALUE x, VALUE y)
@@ -3740,6 +4073,20 @@ fix_mul(VALUE x, VALUE y)
 	return rb_num_coerce_bin(x, y, '*');
     }
 }
+
+/*
+ *  call-seq:
+ *    self * numeric -> numeric_result
+ *
+ *  Performs multiplication:
+ *
+ *    4 * 2              # => 8
+ *    4 * -2             # => -8
+ *    -4 * 2             # => -8
+ *    4 * 2.0            # => 8.0
+ *    4 * Rational(1, 3) # => (4/3)
+ *    4 * Complex(2, 0)  # => (8+0i)
+ */
 
 VALUE
 rb_int_mul(VALUE x, VALUE y)
@@ -3792,15 +4139,19 @@ rb_int_fdiv_double(VALUE x, VALUE y)
 }
 
 /*
- *  Document-method: Integer#fdiv
  *  call-seq:
- *     int.fdiv(numeric)  ->  float
+ *    fdiv(numeric) -> float
  *
- *  Returns the floating point result of dividing +int+ by +numeric+.
+ *  Returns the Float result of dividing +self+ by +numeric+:
  *
- *     654321.fdiv(13731)      #=> 47.652829364212366
- *     654321.fdiv(13731.24)   #=> 47.65199646936475
- *     -654321.fdiv(13731)     #=> -47.652829364212366
+ *    4.fdiv(2)      # => 2.0
+ *    4.fdiv(-2)      # => -2.0
+ *    -4.fdiv(2)      # => -2.0
+ *    4.fdiv(2.0)      # => 2.0
+ *    4.fdiv(Rational(3, 4))      # => 5.333333333333333
+ *
+ *  Raises an exception if +numeric+ cannot be converted to a Float.
+ *
  */
 
 VALUE
@@ -3811,15 +4162,6 @@ rb_int_fdiv(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#/
- * call-seq:
- *    int / numeric  ->  numeric_result
- *
- * Performs division: the class of the resulting object depends on
- * the class of +numeric+.
- */
 
 static VALUE
 fix_divide(VALUE x, VALUE y, ID op)
@@ -3858,6 +4200,25 @@ fix_div(VALUE x, VALUE y)
     return fix_divide(x, y, '/');
 }
 
+/*
+ * call-seq:
+ *   self / numeric -> numeric_result
+ *
+ * Performs division; for integer +numeric+, truncates the result to an integer:
+ *
+ *   4 / 3              # => 1
+ *   4 / -3             # => -2
+ *   -4 / 3             # => -2
+ *   -4 / -3            # => 1
+ *
+ *  For other +numeric+, returns non-integer result:
+ *
+ *   4 / 3.0            # => 1.3333333333333333
+ *   4 / Rational(3, 1) # => (4/3)
+ *   4 / Complex(3, 0)  # => ((4/3)+0i)
+ *
+ */
+
 VALUE
 rb_int_div(VALUE x, VALUE y)
 {
@@ -3870,20 +4231,29 @@ rb_int_div(VALUE x, VALUE y)
     return Qnil;
 }
 
-/*
- * Document-method: Integer#div
- * call-seq:
- *    int.div(numeric)  ->  integer
- *
- * Performs integer division: returns the integer result of dividing +int+
- * by +numeric+.
- */
-
 static VALUE
 fix_idiv(VALUE x, VALUE y)
 {
     return fix_divide(x, y, id_div);
 }
+
+/*
+ *  call-seq:
+ *    div(numeric)  -> integer
+ *
+ * Performs integer division; returns the integer result of dividing +self+
+ * by +numeric+:
+ *
+ *    4.div(3)      # => 1
+ *    4.div(-3)      # => -2
+ *    -4.div(3)      # => -2
+ *    -4.div(-3)      # => 1
+ *    4.div(3.0)      # => 1
+ *    4.div(Rational(3, 1))      # => 1
+ *
+ *  Raises an exception if +numeric+ does not have method +div+.
+ *
+ */
 
 VALUE
 rb_int_idiv(VALUE x, VALUE y)
@@ -4060,22 +4430,19 @@ rb_int_divmod(VALUE x, VALUE y)
 }
 
 /*
- *  Document-method: Integer#**
  *  call-seq:
- *     int ** numeric  ->  numeric_result
+ *    self ** numeric -> numeric_result
  *
- *  Raises +int+ to the power of +numeric+, which may be negative or
- *  fractional.
- *  The result may be an Integer, a Float, a Rational, or a complex number.
+ *  Raises +self+ to the power of +numeric+:
  *
- *     2 ** 3        #=> 8
- *     2 ** -1       #=> (1/2)
- *     2 ** 0.5      #=> 1.4142135623730951
- *     (-1) ** 0.5   #=> (0.0+1.0i)
+ *    2 ** 3              # => 8
+ *    2 ** -3             # => (1/8)
+ *    -2 ** 3             # => -8
+ *    -2 ** -3            # => (-1/8)
+ *    2 ** 3.3            # => 9.849155306759329
+ *    2 ** Rational(3, 1) # => (8/1)
+ *    2 ** Complex(3, 0)  # => (8+0i)
  *
- *     123456789 ** 2     #=> 15241578750190521
- *     123456789 ** 1.2   #=> 5126464716.0993185
- *     123456789 ** -2    #=> (1/15241578750190521)
  */
 
 static VALUE
@@ -4185,6 +4552,21 @@ fix_pow(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self ** numeric -> numeric_result
+ *
+ *  Raises +self+ to the power of +numeric+:
+ *
+ *    2 ** 3              # => 8
+ *    2 ** -3             # => (1/8)
+ *    -2 ** 3             # => -8
+ *    -2 ** -3            # => (-1/8)
+ *    2 ** 3.3            # => 9.849155306759329
+ *    2 ** Rational(3, 1) # => (8/1)
+ *    2 ** Complex(3, 0)  # => (8+0i)
+ *
+ */
 VALUE
 rb_int_pow(VALUE x, VALUE y)
 {
@@ -4215,19 +4597,6 @@ rb_num_pow(VALUE x, VALUE y)
     return Qnil;
 }
 
-/*
- * Document-method: Integer#==
- * Document-method: Integer#===
- * call-seq:
- *    int == other  ->  true or false
- *
- * Returns +true+ if +int+ equals +other+ numerically.
- * Contrast this with Integer#eql?, which requires +other+ to be an Integer.
- *
- *    1 == 2     #=> false
- *    1 == 1.0   #=> true
- */
-
 static VALUE
 fix_equal(VALUE x, VALUE y)
 {
@@ -4244,6 +4613,21 @@ fix_equal(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self == other -> true or false
+ *
+ *  Returns +true+ if +self+ is numerically equal to +other+; +false+ otherwise.
+ *
+ *    1 == 2     #=> false
+ *    1 == 1.0   #=> true
+ *
+ *  Related: Integer#eql? (requires +other+ to be an \Integer).
+ *
+ *  Integer#=== is an alias for Integer#==.
+ *
+ */
+
 VALUE
 rb_int_equal(VALUE x, VALUE y)
 {
@@ -4255,19 +4639,6 @@ rb_int_equal(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- *  Document-method: Integer#<=>
- *  call-seq:
- *     int <=> numeric  ->  -1, 0, +1, or nil
- *
- *  Comparison---Returns -1, 0, or +1 depending on whether +int+ is
- *  less than, equal to, or greater than +numeric+.
- *
- *  This is the basis for the tests in the Comparable module.
- *
- *  +nil+ is returned if the two values are incomparable.
- */
 
 static VALUE
 fix_cmp(VALUE x, VALUE y)
@@ -4293,6 +4664,32 @@ fix_cmp(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self <=> other  ->  -1, 0, +1, or nil
+ *
+ *  Returns:
+ *
+ *  - -1, if +self+ is less than +other+.
+ *  - 0, if +self+ is equal to +other+.
+ *  - 1, if +self+ is greater then +other+.
+ *  - +nil+, if +self+ and +other+ are incomparable.
+ *
+ *  Examples:
+ *
+ *    1 <=> 2              # => -1
+ *    1 <=> 1              # => 0
+ *    1 <=> 0              # => 1
+ *    1 <=> 'foo'          # => nil
+ *
+ *    1 <=> 1.0            # => 0
+ *    1 <=> Rational(1, 1) # => 0
+ *    1 <=> Complex(1, 0)  # => 0
+ *
+ *  This method is the basis for comparisons in module Comparable.
+ *
+ */
+
 VALUE
 rb_int_cmp(VALUE x, VALUE y)
 {
@@ -4306,14 +4703,6 @@ rb_int_cmp(VALUE x, VALUE y)
 	rb_raise(rb_eNotImpError, "need to define `<=>' in %s", rb_obj_classname(x));
     }
 }
-
-/*
- * Document-method: Integer#>
- * call-seq:
- *    int > real  ->  true or false
- *
- * Returns +true+ if the value of +int+ is greater than that of +real+.
- */
 
 static VALUE
 fix_gt(VALUE x, VALUE y)
@@ -4332,6 +4721,22 @@ fix_gt(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self > other -> true or false
+ *
+ * Returns +true+ if the value of +self+ is greater than that of +other+:
+ *
+ *    1 > 0              # => true
+ *    1 > 1              # => false
+ *    1 > 2              # => false
+ *    1 > 0.5            # => true
+ *    1 > Rational(1, 2) # => true
+ *
+ *  Raises an exception if the comparison cannot be made.
+ *
+ */
+
 VALUE
 rb_int_gt(VALUE x, VALUE y)
 {
@@ -4343,15 +4748,6 @@ rb_int_gt(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#>=
- * call-seq:
- *    int >= real  ->  true or false
- *
- * Returns +true+ if the value of +int+ is greater than or equal to that of
- * +real+.
- */
 
 static VALUE
 fix_ge(VALUE x, VALUE y)
@@ -4371,6 +4767,23 @@ fix_ge(VALUE x, VALUE y)
     }
 }
 
+/*
+ *  call-seq:
+ *    self >= real -> true or false
+ *
+ *  Returns +true+ if the value of +self+ is greater than or equal to
+ *  that of +other+:
+ *
+ *    1 >= 0              # => true
+ *    1 >= 1              # => true
+ *    1 >= 2              # => false
+ *    1 >= 0.5            # => true
+ *    1 >= Rational(1, 2) # => true
+ *
+ *  Raises an exception if the comparison cannot be made.
+ *
+ */
+
 VALUE
 rb_int_ge(VALUE x, VALUE y)
 {
@@ -4382,14 +4795,6 @@ rb_int_ge(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#<
- * call-seq:
- *    int < real  ->  true or false
- *
- * Returns +true+ if the value of +int+ is less than that of +real+.
- */
 
 static VALUE
 fix_lt(VALUE x, VALUE y)
@@ -4408,6 +4813,22 @@ fix_lt(VALUE x, VALUE y)
     }
 }
 
+/*
+ * call-seq:
+ *    self < other -> true or false
+ *
+ * Returns +true+ if the value of +self+ is less than that of +other+:
+ *
+ *    1 < 0              # => false
+ *    1 < 1              # => false
+ *    1 < 2              # => true
+ *    1 < 0.5            # => false
+ *    1 < Rational(1, 2) # => false
+ *
+ *  Raises an exception if the comparison cannot be made.
+ *
+ */
+
 static VALUE
 int_lt(VALUE x, VALUE y)
 {
@@ -4419,15 +4840,6 @@ int_lt(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#<=
- * call-seq:
- *    int <= real  ->  true or false
- *
- * Returns +true+ if the value of +int+ is less than or equal to that of
- * +real+.
- */
 
 static VALUE
 fix_le(VALUE x, VALUE y)
@@ -4446,6 +4858,23 @@ fix_le(VALUE x, VALUE y)
 	return rb_num_coerce_relop(x, y, idLE);
     }
 }
+
+/*
+ * call-seq:
+ *    self <= real -> true or false
+ *
+ *  Returns +true+ if the value of +self+ is less than or equal to
+ *  that of +other+:
+ *
+ *    1 <= 0              # => false
+ *    1 <= 1              # => true
+ *    1 <= 2              # => true
+ *    1 <= 0.5            # => false
+ *    1 <= Rational(1, 2) # => false
+ *
+ *  Raises an exception if the comparison cannot be made.
+ *
+ */
 
 static VALUE
 int_le(VALUE x, VALUE y)
@@ -4506,14 +4935,6 @@ rb_num_coerce_bit(VALUE x, VALUE y, ID func)
     return ret;
 }
 
-/*
- * Document-method: Integer#&
- * call-seq:
- *   int & other_int  ->  integer
- *
- * Bitwise AND.
- */
-
 static VALUE
 fix_and(VALUE x, VALUE y)
 {
@@ -4529,6 +4950,21 @@ fix_and(VALUE x, VALUE y)
     return rb_num_coerce_bit(x, y, '&');
 }
 
+/*
+ *  call-seq:
+ *    self & other ->  integer
+ *
+ *  Bitwise AND; each bit in the result is 1 if both corresponding bits
+ *  in +self+ and +other+ are 1, 0 otherwise:
+ *
+ *    "%04b" % (0b0101 & 0b0110) # => "0100"
+ *
+ *  Raises an exception if +other+ is not an \Integer.
+ *
+ *  Related: Integer#| (bitwise OR), Integer#^ (bitwise EXCLUSIVE OR).
+ *
+ */
+
 VALUE
 rb_int_and(VALUE x, VALUE y)
 {
@@ -4540,14 +4976,6 @@ rb_int_and(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#|
- * call-seq:
- *   int | other_int  ->  integer
- *
- * Bitwise OR.
- */
 
 static VALUE
 fix_or(VALUE x, VALUE y)
@@ -4564,6 +4992,21 @@ fix_or(VALUE x, VALUE y)
     return rb_num_coerce_bit(x, y, '|');
 }
 
+/*
+ *  call-seq:
+ *   self | other -> integer
+ *
+ *  Bitwise OR; each bit in the result is 1 if either corresponding bit
+ *  in +self+ or +other+ is 1, 0 otherwise:
+ *
+ *    "%04b" % (0b0101 | 0b0110) # => "0111"
+ *
+ *  Raises an exception if +other+ is not an \Integer.
+ *
+ *  Related: Integer#& (bitwise AND), Integer#^ (bitwise EXCLUSIVE OR).
+ *
+ */
+
 static VALUE
 int_or(VALUE x, VALUE y)
 {
@@ -4575,14 +5018,6 @@ int_or(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#^
- * call-seq:
- *   int ^ other_int  ->  integer
- *
- * Bitwise EXCLUSIVE OR.
- */
 
 static VALUE
 fix_xor(VALUE x, VALUE y)
@@ -4599,6 +5034,21 @@ fix_xor(VALUE x, VALUE y)
     return rb_num_coerce_bit(x, y, '^');
 }
 
+/*
+ *  call-seq:
+ *    self ^ other -> integer
+ *
+ *  Bitwise EXCLUSIVE OR; each bit in the result is 1 if the corresponding bits
+ *  in +self+ and +other+ are different, 0 otherwise:
+ *
+ *    "%04b" % (0b0101 ^ 0b0110) # => "0011"
+ *
+ *  Raises an exception if +other+ is not an \Integer.
+ *
+ *  Related: Integer#& (bitwise AND), Integer#| (bitwise OR).
+ *
+ */
+
 static VALUE
 int_xor(VALUE x, VALUE y)
 {
@@ -4610,15 +5060,6 @@ int_xor(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#<<
- * call-seq:
- *   int << count  ->  integer
- *
- * Returns +int+ shifted left +count+ positions, or right if +count+
- * is negative.
- */
 
 static VALUE
 rb_fix_lshift(VALUE x, VALUE y)
@@ -4645,6 +5086,23 @@ fix_lshift(long val, unsigned long width)
     return LONG2NUM(val);
 }
 
+/*
+ *  call-seq:
+ *    self << count -> integer
+ *
+ *  Returns +self+ with bits shifted +count+ positions to the left,
+ *  or to the right if +count+ is negative:
+ *
+ *    n = 0b11110000
+ *    "%08b" % (n << 1)  # => "111100000"
+ *    "%08b" % (n << 3)  # => "11110000000"
+ *    "%08b" % (n << -1) # => "01111000"
+ *    "%08b" % (n << -3) # => "00011110"
+ *
+ *  Related: Integer#>>.
+ *
+ */
+
 VALUE
 rb_int_lshift(VALUE x, VALUE y)
 {
@@ -4656,15 +5114,6 @@ rb_int_lshift(VALUE x, VALUE y)
     }
     return Qnil;
 }
-
-/*
- * Document-method: Integer#>>
- * call-seq:
- *   int >> count  ->  integer
- *
- * Returns +int+ shifted right +count+ positions, or left if +count+
- * is negative.
- */
 
 static VALUE
 rb_fix_rshift(VALUE x, VALUE y)
@@ -4691,6 +5140,23 @@ fix_rshift(long val, unsigned long i)
     val = RSHIFT(val, i);
     return LONG2FIX(val);
 }
+
+/*
+ *  call-seq:
+ *    self >> count -> integer
+ *
+ *  Returns +self+ with bits shifted +count+ positions to the right,
+ *  or to the left if +count+ is negative:
+ *
+ *    n = 0b11110000
+ *    "%08b" % (n >> 1)  # => "01111000"
+ *    "%08b" % (n >> 3)  # => "00011110"
+ *    "%08b" % (n >> -1) # => "111100000"
+ *    "%08b" % (n >> -3) # => "11110000000"
+ *
+ *  Related: Integer#<<.
+ *
+ */
 
 static VALUE
 rb_int_rshift(VALUE x, VALUE y)
@@ -4815,41 +5281,42 @@ int_aref2(VALUE num, VALUE beg, VALUE len)
 }
 
 /*
- *  Document-method: Integer#[]
  *  call-seq:
- *     int[n]    -> 0, 1
- *     int[n, m] -> num
- *     int[range] -> num
+ *     self[offset]    -> 0 or 1
+ *     self[offset, size] -> integer
+ *     self[range] -> integer
  *
- *  Bit Reference---Returns the <code>n</code>th bit in the
- *  binary representation of +int+, where <code>int[0]</code>
- *  is the least significant bit.
+ *  Returns a slice of bits from +self+.
  *
- *     a = 0b11001100101010
- *     30.downto(0) {|n| print a[n] }
- *     #=> 0000000000000000011001100101010
+ *  With argument +offset+, returns the bit at the given offset,
+ *  where offset 0 refers to the least significant bit:
  *
- *     a = 9**15
- *     50.downto(0) {|n| print a[n] }
- *     #=> 000101110110100000111000011110010100111100010111001
+ *    n = 0b10 # => 2
+ *    n[0]     # => 0
+ *    n[1]     # => 1
+ *    n[2]     # => 0
+ *    n[3]     # => 0
  *
  *  In principle, <code>n[i]</code> is equivalent to <code>(n >> i) & 1</code>.
- *  Thus, any negative index always returns zero:
+ *  Thus, negative index always returns zero:
  *
- *     p 255[-1] #=> 0
+ *     255[-1] # => 0
  *
- *  Range operations <code>n[i, len]</code> and <code>n[i..j]</code>
- *  are naturally extended.
+ *  With arguments +offset+ and +size+, returns +size+ bits from +self+,
+ *  beginning at +offset+ and including bits of greater significance:
  *
- *  * <code>n[i, len]</code> equals to <code>(n >> i) & ((1 << len) - 1)</code>.
- *  * <code>n[i..j]</code> equals to <code>(n >> i) & ((1 << (j - i + 1)) - 1)</code>.
- *  * <code>n[i...j]</code> equals to <code>(n >> i) & ((1 << (j - i)) - 1)</code>.
- *  * <code>n[i..]</code> equals to <code>(n >> i)</code>.
- *  * <code>n[..j]</code> is zero if <code>n & ((1 << (j + 1)) - 1)</code> is zero.  Otherwise, raises an ArgumentError.
- *  * <code>n[...j]</code> is zero if <code>n & ((1 << j) - 1)</code> is zero.  Otherwise, raises an ArgumentError.
+ *    n = 0b111000       # => 56
+ *    "%010b" % n[0, 10] # => "0000111000"
+ *    "%010b" % n[4, 10] # => "0000000011"
  *
- *  Note that range operation may exhaust memory.
- *  For example, <code>-1[0, 1000000000000]</code> will raise NoMemoryError.
+ *  With argument +range+, returns <tt>range.size</tt> bits from +self+,
+ *  beginning at <tt>range.begin</tt> and including bits of greater significance:
+ *
+ *    n = 0b111000      # => 56
+ *    "%010b" % n[0..9] # => "0000111000"
+ *    "%010b" % n[4..9] # => "0000000011"
+ *
+ *  Raises an exception if the slice cannot be constructed.
  */
 
 static VALUE
@@ -4865,12 +5332,20 @@ int_aref(int const argc, VALUE * const argv, VALUE const num)
 }
 
 /*
- *  Document-method: Integer#to_f
  *  call-seq:
- *     int.to_f  ->  float
+ *    to_f -> float
  *
- *  Converts +int+ to a Float.  If +int+ doesn't fit in a Float,
- *  the result is infinity.
+ *  Converts +self+ to a Float:
+ *
+ *    1.to_f  # => 1.0
+ *    -1.to_f # => -1.0
+ *
+ *  If the value of +self+ does not fit in a \Float,
+ *  the result is infinity:
+ *
+ *    (10**400).to_f  # => Infinity
+ *    (-10**400).to_f # => -Infinity
+ *
  */
 
 static VALUE
@@ -4952,26 +5427,6 @@ rb_int_bit_length(VALUE num)
     return Qnil;
 }
 
-/*
- *  Document-method: Integer#digits
- *  call-seq:
- *     int.digits        ->  array
- *     int.digits(base)  ->  array
- *
- *  Returns the digits of +int+'s place-value representation
- *  with radix +base+ (default: 10).
- *  The digits are returned as an array with the least significant digit
- *  as the first array element.
- *
- *  +base+ must be greater than or equal to 2.
- *
- *     12345.digits      #=> [5, 4, 3, 2, 1]
- *     12345.digits(7)   #=> [4, 6, 6, 0, 5]
- *     12345.digits(100) #=> [45, 23, 1]
- *
- *     -12345.digits(7)  #=> Math::DomainError
- */
-
 static VALUE
 rb_fix_digits(VALUE fix, long base)
 {
@@ -5048,6 +5503,22 @@ rb_int_digits_bigbase(VALUE num, VALUE base)
     return digits;
 }
 
+/*
+ *  call-seq:
+ *    digits(base = 10) -> array_of_integers
+ *
+ *  Returns an array of integers representing the +base+-radix
+ *  digits of +self+;
+ *  the first element of the array represents the least significant digit:
+ *
+ *    12345.digits      # => [5, 4, 3, 2, 1]
+ *    12345.digits(7)   # => [4, 6, 6, 0, 5]
+ *    12345.digits(100) # => [45, 23, 1]
+ *
+ *  Raises an exception if +self+ is negative or +base+ is less than 2.
+ *
+ */
+
 static VALUE
 rb_int_digits(int argc, VALUE *argv, VALUE num)
 {
@@ -5082,25 +5553,31 @@ rb_int_digits(int argc, VALUE *argv, VALUE num)
     return Qnil;
 }
 
-/*
- *  Document-method: Integer#upto
- *  call-seq:
- *     int.upto(limit) {|i| block }  ->  self
- *     int.upto(limit)               ->  an_enumerator
- *
- *  Iterates the given block, passing in integer values from +int+ up to and
- *  including +limit+.
- *
- *  If no block is given, an Enumerator is returned instead.
- *
- *     5.upto(10) {|i| print i, " " }   #=> 5 6 7 8 9 10
- */
-
 static VALUE
 int_upto_size(VALUE from, VALUE args, VALUE eobj)
 {
     return ruby_num_interval_step_size(from, RARRAY_AREF(args, 0), INT2FIX(1), FALSE);
 }
+
+/*
+ *  call-seq:
+ *    upto(limit) {|i| ... } -> self
+ *    upto(limit)            ->  enumerator
+ *
+ *  Calls the given block with each integer value from +self+ up to +limit+;
+ *  returns +self+:
+ *
+ *    a = []
+ *    5.upto(10) {|i| a << i }              # => 5
+ *    a                                     # => [5, 6, 7, 8, 9, 10]
+ *    a = []
+ *    -5.upto(0) {|i| a << i }              # => -5
+ *    a                                     # => [-5, -4, -3, -2, -1, 0]
+ *    5.upto(4) {|i| fail 'Cannot happen' } # => 5
+ *
+ *  With no block given, returns an Enumerator.
+ *
+ */
 
 static VALUE
 int_upto(VALUE from, VALUE to)
@@ -5126,27 +5603,31 @@ int_upto(VALUE from, VALUE to)
     return from;
 }
 
-/*
- *  Document-method: Integer#downto
- *  call-seq:
- *     int.downto(limit) {|i| block }  ->  self
- *     int.downto(limit)               ->  an_enumerator
- *
- *  Iterates the given block, passing in decreasing values from +int+ down to
- *  and including +limit+.
- *
- *  If no block is given, an Enumerator is returned instead.
- *
- *     5.downto(1) { |n| print n, ".. " }
- *     puts "Liftoff!"
- *     #=> "5.. 4.. 3.. 2.. 1.. Liftoff!"
- */
-
 static VALUE
 int_downto_size(VALUE from, VALUE args, VALUE eobj)
 {
     return ruby_num_interval_step_size(from, RARRAY_AREF(args, 0), INT2FIX(-1), FALSE);
 }
+
+/*
+ *  call-seq:
+ *    downto(limit) {|i| ... } -> self
+ *    downto(limit)            ->  enumerator
+ *
+ *  Calls the given block with each integer value from +self+ down to +limit+;
+ *  returns +self+:
+ *
+ *    a = []
+ *    10.downto(5) {|i| a << i }              # => 10
+ *    a                                       # => [10, 9, 8, 7, 6, 5]
+ *    a = []
+ *    0.downto(-5) {|i| a << i }              # => 0
+ *    a                                       # => [0, -1, -2, -3, -4, -5]
+ *    4.downto(5) {|i| fail 'Cannot happen' } # => 4
+ *
+ *  With no block given, returns an Enumerator.
+ *
+ */
 
 static VALUE
 int_downto(VALUE from, VALUE to)
@@ -5172,20 +5653,6 @@ int_downto(VALUE from, VALUE to)
     return from;
 }
 
-/*
- *  Document-method: Integer#times
- *  call-seq:
- *     int.times {|i| block }  ->  self
- *     int.times               ->  an_enumerator
- *
- *  Iterates the given block +int+ times, passing in values from zero to
- *  <code>int - 1</code>.
- *
- *  If no block is given, an Enumerator is returned instead.
- *
- *     5.times {|i| print i, " " }   #=> 0 1 2 3 4
- */
-
 static VALUE
 int_dotimes_size(VALUE num, VALUE args, VALUE eobj)
 {
@@ -5197,6 +5664,21 @@ int_dotimes_size(VALUE num, VALUE args, VALUE eobj)
     }
     return num;
 }
+
+/*
+ *  call-seq:
+ *    times {|i| ... } -> self
+ *    times            -> enumerator
+ *
+ *  Calls the given block +self+ times with each integer in <tt>(0..self-1)</tt>:
+ *
+ *    a = []
+ *    5.times {|i| a.push(i) } # => 5
+ *    a                        # => [0, 1, 2, 3, 4]
+ *
+ *  With no block given, returns an Enumerator.
+ *
+ */
 
 static VALUE
 int_dotimes(VALUE num)
@@ -5215,44 +5697,61 @@ int_dotimes(VALUE num)
 	VALUE i = INT2FIX(0);
 
 	for (;;) {
-	    if (!RTEST(rb_funcall(i, '<', 1, num))) break;
+            if (!RTEST(int_le(i, num))) break;
 	    rb_yield(i);
-	    i = rb_funcall(i, '+', 1, INT2FIX(1));
+            i = rb_int_plus(i, INT2FIX(1));
 	}
     }
     return num;
 }
 
 /*
- *  Document-method: Integer#round
  *  call-seq:
- *     int.round([ndigits] [, half: mode])  ->  integer or float
+ *    round(ndigits= 0, half: :up) -> integer
  *
- *  Returns +int+ rounded to the nearest value with
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns +self+ rounded to the nearest value with
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is negative, the returned value
+ *  has at least <tt>ndigits.abs</tt> trailing zeros:
+ *
+ *    555.round(-1)      # => 560
+ *    555.round(-2)      # => 600
+ *    555.round(-3)      # => 1000
+ *    -555.round(-2)     # => -600
+ *    555.round(-4)      # => 0
  *
  *  Returns +self+ when +ndigits+ is zero or positive.
  *
- *     1.round           #=> 1
- *     1.round(2)        #=> 1
- *     15.round(-1)      #=> 20
- *     (-15).round(-1)   #=> -20
+ *    555.round     # => 555
+ *    555.round(1)  # => 555
+ *    555.round(50) # => 555
  *
- *  The optional +half+ keyword argument is available
- *  similar to Float#round.
+ *  If keyword argument +half+ is given,
+ *  and +self+ is equidistant from the two candidate  values,
+ *  the rounding is according to the given +half+ value:
  *
- *     25.round(-1, half: :up)      #=> 30
- *     25.round(-1, half: :down)    #=> 20
- *     25.round(-1, half: :even)    #=> 20
- *     35.round(-1, half: :up)      #=> 40
- *     35.round(-1, half: :down)    #=> 30
- *     35.round(-1, half: :even)    #=> 40
- *     (-25).round(-1, half: :up)   #=> -30
- *     (-25).round(-1, half: :down) #=> -20
- *     (-25).round(-1, half: :even) #=> -20
+ *  - +:up+ or +nil+: round away from zero:
+ *
+ *      25.round(-1, half: :up)      # => 30
+ *      (-25).round(-1, half: :up)   # => -30
+ *
+ *  - +:down+: round toward zero:
+ *
+ *      25.round(-1, half: :down)    # => 20
+ *      (-25).round(-1, half: :down) # => -20
+ *
+ *
+ *  - +:even+: round toward the candidate whose last nonzero digit is even:
+ *
+ *      25.round(-1, half: :even)    # => 20
+ *      15.round(-1, half: :even)    # => 20
+ *      (-25).round(-1, half: :even) # => -20
+ *
+ *  Raises and exception if the value for +half+ is invalid.
+ *
+ *  Related: Integer#truncate.
+ *
  */
 
 static VALUE
@@ -5272,22 +5771,27 @@ int_round(int argc, VALUE* argv, VALUE num)
 }
 
 /*
- *  Document-method: Integer#floor
  *  call-seq:
- *     int.floor([ndigits])  ->  integer or float
+ *    floor(ndigits = 0) -> integer
  *
- *  Returns the largest number less than or equal to +int+ with
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns the largest number less than or equal to +self+ with
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is negative, the returned value
+ *  has at least <tt>ndigits.abs</tt> trailing zeros:
+ *
+ *    555.floor(-1)  # => 550
+ *    555.floor(-2)  # => 500
+ *    -555.floor(-2) # => -600
+ *    555.floor(-3)  # => 0
  *
  *  Returns +self+ when +ndigits+ is zero or positive.
  *
- *     1.floor           #=> 1
- *     1.floor(2)        #=> 1
- *     18.floor(-1)      #=> 10
- *     (-18).floor(-1)   #=> -20
+ *    555.floor     # => 555
+ *    555.floor(50) # => 555
+ *
+ *  Related: Integer#ceil.
+ *
  */
 
 static VALUE
@@ -5304,22 +5808,27 @@ int_floor(int argc, VALUE* argv, VALUE num)
 }
 
 /*
- *  Document-method: Integer#ceil
  *  call-seq:
- *     int.ceil([ndigits])  ->  integer or float
+ *    ceil(ndigits = 0) -> integer
  *
- *  Returns the smallest number greater than or equal to +int+ with
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns the smallest number greater than or equal to +self+ with
+ *  a precision of +ndigits+ decimal digits.
  *
  *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  with at least <code>ndigits.abs</code> trailing zeros:
+ *
+ *    555.ceil(-1)  # => 560
+ *    555.ceil(-2)  # => 600
+ *    -555.ceil(-2) # => -500
+ *    555.ceil(-3)  # => 1000
  *
  *  Returns +self+ when +ndigits+ is zero or positive.
  *
- *     1.ceil           #=> 1
- *     1.ceil(2)        #=> 1
- *     18.ceil(-1)      #=> 20
- *     (-18).ceil(-1)   #=> -10
+ *     555.ceil     # => 555
+ *     555.ceil(50) # => 555
+ *
+ *  Related: Integer#floor.
+ *
  */
 
 static VALUE
@@ -5336,22 +5845,26 @@ int_ceil(int argc, VALUE* argv, VALUE num)
 }
 
 /*
- *  Document-method: Integer#truncate
  *  call-seq:
- *     int.truncate([ndigits])  ->  integer or float
+ *    truncate(ndigits = 0) -> integer
  *
- *  Returns +int+ truncated (toward zero) to
- *  a precision of +ndigits+ decimal digits (default: 0).
+ *  Returns +self+ truncated (toward zero) to
+ *  a precision of +ndigits+ decimal digits.
  *
- *  When the precision is negative, the returned value is an integer
- *  with at least <code>ndigits.abs</code> trailing zeros.
+ *  When +ndigits+ is negative, the returned value
+ *  has at least <tt>ndigits.abs</tt> trailing zeros:
+ *
+ *    555.truncate(-1)  # => 550
+ *    555.truncate(-2)  # => 500
+ *    -555.truncate(-2) # => -500
  *
  *  Returns +self+ when +ndigits+ is zero or positive.
  *
- *     1.truncate           #=> 1
- *     1.truncate(2)        #=> 1
- *     18.truncate(-1)      #=> 10
- *     (-18).truncate(-1)   #=> -10
+ *    555.truncate     # => 555
+ *    555.truncate(50) # => 555
+ *
+ *  Related: Integer#round.
+ *
  */
 
 static VALUE
@@ -5409,29 +5922,35 @@ DEFINE_INT_SQRT(BDIGIT, rb_bdigit_dbl, BDIGIT_DBL)
     rb_raise(rb_eMathDomainError, "Numerical argument is out of domain - " #msg)
 
 /*
- *  Document-method: Integer::sqrt
  *  call-seq:
- *     Integer.sqrt(n)  ->  integer
+ *    Integer.sqrt(numeric) -> integer
  *
  *  Returns the integer square root of the non-negative integer +n+,
- *  i.e. the largest non-negative integer less than or equal to the
- *  square root of +n+.
+ *  which is the largest non-negative integer less than or equal to the
+ *  square root of +numeric+.
  *
- *    Integer.sqrt(0)        #=> 0
- *    Integer.sqrt(1)        #=> 1
- *    Integer.sqrt(24)       #=> 4
- *    Integer.sqrt(25)       #=> 5
- *    Integer.sqrt(10**400)  #=> 10**200
+ *    Integer.sqrt(0)       # => 0
+ *    Integer.sqrt(1)       # => 1
+ *    Integer.sqrt(24)      # => 4
+ *    Integer.sqrt(25)      # => 5
+ *    Integer.sqrt(10**400) # => 10**200
  *
- *  Equivalent to <code>Math.sqrt(n).floor</code>, except that
- *  the result of the latter code may differ from the true value
+ *  If +numeric+ is not an \Integer, it is converted to an \Integer:
+ *
+ *    Integer.sqrt(Complex(4, 0))  # => 2
+ *    Integer.sqrt(Rational(4, 1)) # => 2
+ *    Integer.sqrt(4.0)            # => 2
+ *    Integer.sqrt(3.14159)        # => 1
+ *
+ *  This method is equivalent to <tt>Math.sqrt(numeric).floor</tt>,
+ *  except that the result of the latter code may differ from the true value
  *  due to the limited precision of floating point arithmetic.
  *
- *    Integer.sqrt(10**46)     #=> 100000000000000000000000
- *    Math.sqrt(10**46).floor  #=>  99999999999999991611392 (!)
+ *    Integer.sqrt(10**46)    # => 100000000000000000000000
+ *    Math.sqrt(10**46).floor # => 99999999999999991611392
  *
- *  If +n+ is not an Integer, it is converted to an Integer first.
- *  If +n+ is negative, a Math::DomainError is raised.
+ *  Raises an exception if +numeric+ is negative.
+ *
  */
 
 static VALUE
@@ -5598,7 +6117,7 @@ int_s_try_convert(VALUE self, VALUE num)
  * - {<=>}[#method-i-3C-3D-3E]:: Returns:
  *   - -1 if  +self+ is less than the given value.
  *   - 0 if +self+ is equal to the given value.
- *   - 1 if +self is greater than the given value.
+ *   - 1 if +self+ is greater than the given value.
  *   - +nil+ if +self+ and the given value are not comparable.
  * - #eql?:: Returns whether +self+ and the given value have the same value and type.
  *
@@ -5700,7 +6219,7 @@ Init_Numeric(void)
     rb_define_singleton_method(rb_cInteger, "sqrt", rb_int_s_isqrt, 1);
     rb_define_singleton_method(rb_cInteger, "try_convert", int_s_try_convert, 1);
 
-    rb_define_method(rb_cInteger, "to_s", int_to_s, -1);
+    rb_define_method(rb_cInteger, "to_s", rb_int_to_s, -1);
     rb_define_alias(rb_cInteger, "inspect", "to_s");
     rb_define_method(rb_cInteger, "allbits?", int_allbits_p, 1);
     rb_define_method(rb_cInteger, "anybits?", int_anybits_p, 1);
@@ -5749,6 +6268,20 @@ Init_Numeric(void)
     rb_define_method(rb_cInteger, ">>", rb_int_rshift, 1);
 
     rb_define_method(rb_cInteger, "digits", rb_int_digits, -1);
+
+    rb_fix_to_s_static[0] = rb_fstring_literal("0");
+    rb_fix_to_s_static[1] = rb_fstring_literal("1");
+    rb_fix_to_s_static[2] = rb_fstring_literal("2");
+    rb_fix_to_s_static[3] = rb_fstring_literal("3");
+    rb_fix_to_s_static[4] = rb_fstring_literal("4");
+    rb_fix_to_s_static[5] = rb_fstring_literal("5");
+    rb_fix_to_s_static[6] = rb_fstring_literal("6");
+    rb_fix_to_s_static[7] = rb_fstring_literal("7");
+    rb_fix_to_s_static[8] = rb_fstring_literal("8");
+    rb_fix_to_s_static[9] = rb_fstring_literal("9");
+    for(int i = 0; i < 10; i++) {
+        rb_gc_register_mark_object(rb_fix_to_s_static[i]);
+    }
 
     /* An obsolete class, use Integer */
     rb_define_const(rb_cObject, "Fixnum", rb_cInteger);

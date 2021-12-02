@@ -800,11 +800,11 @@ An Array (#{env.inspect}) was passed in from #{caller[3]}
   ##
   # Safely write a file in binary mode on all platforms.
   def self.write_binary(path, data)
+    File.open(path, File::RDWR | File::CREAT | File::BINARY | File::LOCK_EX) do |io|
+      io.write data
+    end
+  rescue *WRITE_BINARY_ERRORS
     File.open(path, 'wb') do |io|
-      begin
-        io.flock(File::LOCK_EX)
-      rescue *WRITE_BINARY_ERRORS
-      end
       io.write data
     end
   rescue Errno::ENOLCK # NFS
@@ -1327,22 +1327,6 @@ require_relative 'rubygems/exceptions'
 # REFACTOR: This should be pulled out into some kind of hacks file.
 begin
   ##
-  # Defaults the operating system (or packager) wants to provide for RubyGems.
-
-  require 'rubygems/defaults/operating_system'
-rescue LoadError
-  # Ignored
-rescue StandardError => e
-  msg = "#{e.message}\n" \
-    "Loading the rubygems/defaults/operating_system.rb file caused an error. " \
-    "This file is owned by your OS, not by rubygems upstream. " \
-    "Please find out which OS package this file belongs to and follow the guidelines from your OS to report " \
-    "the problem and ask for help."
-  raise e.class, msg
-end
-
-begin
-  ##
   # Defaults the Ruby implementation wants to provide for RubyGems
 
   require "rubygems/defaults/#{RUBY_ENGINE}"
@@ -1356,3 +1340,19 @@ Gem::Specification.load_defaults
 require_relative 'rubygems/core_ext/kernel_gem'
 require_relative 'rubygems/core_ext/kernel_require'
 require_relative 'rubygems/core_ext/kernel_warn'
+
+begin
+  ##
+  # Defaults the operating system (or packager) wants to provide for RubyGems.
+
+  require 'rubygems/defaults/operating_system'
+rescue LoadError
+  # Ignored
+rescue StandardError => e
+  msg = "#{e.message}\n" \
+    "Loading the rubygems/defaults/operating_system.rb file caused an error. " \
+    "This file is owned by your OS, not by rubygems upstream. " \
+    "Please find out which OS package this file belongs to and follow the guidelines from your OS to report " \
+    "the problem and ask for help."
+  raise e.class, msg
+end

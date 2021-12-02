@@ -486,7 +486,8 @@ rb_id_serial_to_id(rb_id_serial_t num)
 {
     if (is_notop_id((ID)num)) {
         VALUE sym = get_id_serial_entry(num, 0, ID_ENTRY_SYM);
-	return SYM2ID(sym);
+	if (sym) return SYM2ID(sym);
+	return ((ID)num << ID_SCOPE_SHIFT) | ID_INTERNAL | ID_STATIC_SYM;
     }
     else {
 	return (ID)num;
@@ -949,6 +950,17 @@ ID
 rb_make_internal_id(void)
 {
     return next_id_base() | ID_INTERNAL | ID_STATIC_SYM;
+}
+
+ID
+rb_make_temporary_id(size_t n)
+{
+    const ID max_id = RB_ID_SERIAL_MAX & ~0xffff;
+    const ID id = max_id - (ID)n;
+    if (id <= ruby_global_symbols.last_id) {
+	rb_raise(rb_eRuntimeError, "too big to make temporary ID: %" PRIdSIZE, n);
+    }
+    return (id << ID_SCOPE_SHIFT) | ID_STATIC_SYM | ID_INTERNAL;
 }
 
 static int

@@ -163,6 +163,19 @@ vm_call0_cfunc(rb_execution_context_t *ec, struct rb_calling_info *calling, cons
     return vm_call0_cfunc_with_frame(ec, calling, argv);
 }
 
+static void
+vm_call_check_arity(struct rb_calling_info *calling, int argc, const VALUE *argv)
+{
+    if (calling->kw_splat &&
+        calling->argc > 0 &&
+        RB_TYPE_P(argv[calling->argc-1], T_HASH) &&
+        RHASH_EMPTY_P(argv[calling->argc-1])) {
+        calling->argc--;
+    }
+
+    rb_check_arity(calling->argc, argc, argc);
+}
+
 /* `ci' should point temporal value (on stack value) */
 static VALUE
 vm_call0_body(rb_execution_context_t *ec, struct rb_calling_info *calling, const VALUE *argv)
@@ -196,27 +209,13 @@ vm_call0_body(rb_execution_context_t *ec, struct rb_calling_info *calling, const
         ret = vm_call0_cfunc(ec, calling, argv);
 	goto success;
       case VM_METHOD_TYPE_ATTRSET:
-        if (calling->kw_splat &&
-                calling->argc > 0 &&
-                RB_TYPE_P(argv[calling->argc-1], T_HASH) &&
-                RHASH_EMPTY_P(argv[calling->argc-1])) {
-            calling->argc--;
-        }
-
-	rb_check_arity(calling->argc, 1, 1);
+        vm_call_check_arity(calling, 1, argv);
         VM_CALL_METHOD_ATTR(ret,
                             rb_ivar_set(calling->recv, vm_cc_cme(cc)->def->body.attr.id, argv[0]),
                             (void)0);
 	goto success;
       case VM_METHOD_TYPE_IVAR:
-        if (calling->kw_splat &&
-                calling->argc > 0 &&
-                RB_TYPE_P(argv[calling->argc-1], T_HASH) &&
-                RHASH_EMPTY_P(argv[calling->argc-1])) {
-            calling->argc--;
-        }
-
-	rb_check_arity(calling->argc, 0, 0);
+        vm_call_check_arity(calling, 0, argv);
         VM_CALL_METHOD_ATTR(ret,
                             rb_attr_get(calling->recv, vm_cc_cme(cc)->def->body.attr.id),
                             (void)0);
@@ -263,7 +262,7 @@ vm_call0_body(rb_execution_context_t *ec, struct rb_calling_info *calling, const
                                   argv, MISSING_NOENTRY, calling->kw_splat);
 	}
       case VM_METHOD_TYPE_OPTIMIZED:
-	switch (vm_cc_cme(cc)->def->body.optimize_type) {
+	switch (vm_cc_cme(cc)->def->body.optimized.type) {
 	  case OPTIMIZED_METHOD_TYPE_SEND:
             ret = send_internal(calling->argc, argv, calling->recv, calling->kw_splat ? CALL_FCALL_KW : CALL_FCALL);
 	    goto success;
@@ -274,8 +273,16 @@ vm_call0_body(rb_execution_context_t *ec, struct rb_calling_info *calling, const
 		ret = rb_vm_invoke_proc(ec, proc, calling->argc, argv, calling->kw_splat, calling->block_handler);
 		goto success;
 	    }
+          case OPTIMIZED_METHOD_TYPE_STRUCT_AREF:
+            vm_call_check_arity(calling, 0, argv);
+            ret = vm_call_opt_struct_aref0(ec, calling);
+            goto success;
+          case OPTIMIZED_METHOD_TYPE_STRUCT_ASET:
+            vm_call_check_arity(calling, 1, argv);
+            ret = vm_call_opt_struct_aset0(ec, calling, argv[0]);
+            goto success;
 	  default:
-	    rb_bug("vm_call0: unsupported optimized method type (%d)", vm_cc_cme(cc)->def->body.optimize_type);
+	    rb_bug("vm_call0: unsupported optimized method type (%d)", vm_cc_cme(cc)->def->body.optimized.type);
 	}
 	break;
       case VM_METHOD_TYPE_UNDEF:
@@ -375,7 +382,7 @@ static inline enum method_missing_reason rb_method_call_status(rb_execution_cont
 static const struct rb_callcache *
 cc_new(VALUE klass, ID mid, int argc, const rb_callable_method_entry_t *cme)
 {
-    const struct rb_callcache *cc;
+    const struct rb_callcache *cc = NULL;
 
     RB_VM_LOCK_ENTER();
     {
@@ -392,10 +399,15 @@ cc_new(VALUE klass, ID mid, int argc, const rb_callable_method_entry_t *cme)
             rb_id_table_insert(cc_tbl, mid, (VALUE)ccs);
         }
 
-        if (ccs->len > 0) {
-            cc = ccs->entries[0].cc;
+        for (int i=0; i<ccs->len; i++) {
+            cc = ccs->entries[i].cc;
+            if (vm_cc_cme(cc) == cme) {
+                break;
+            }
+            cc = NULL;
         }
-        else {
+
+        if (cc == NULL) {
             const struct rb_callinfo *ci = vm_ci_new(mid, 0, argc, false); // TODO: proper ci
             cc = vm_cc_new(klass, cme, vm_call_general);
             METHOD_ENTRY_CACHED_SET((struct rb_callable_method_entry_struct *)cme);
@@ -455,7 +467,7 @@ gccct_method_search(rb_execution_context_t *ec, VALUE recv, ID mid, int argc)
             if (LIKELY(!METHOD_ENTRY_INVALIDATED(cme) &&
                        cme->called_id == mid)) {
 
-                VM_ASSERT(vm_cc_cme(cc) == rb_callable_method_entry(klass, mid));
+                VM_ASSERT(vm_cc_check_cme(cc, rb_callable_method_entry(klass, mid)));
                 RB_DEBUG_COUNTER_INC(gccct_hit);
 
                 return cc;

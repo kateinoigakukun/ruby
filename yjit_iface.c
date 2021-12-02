@@ -115,12 +115,13 @@ struct yjit_root_struct {
 static st_table *blocks_assuming_bops;
 
 static bool
-assume_bop_not_redefined(block_t *block, int redefined_flag, enum ruby_basic_operators bop)
+assume_bop_not_redefined(jitstate_t *jit, int redefined_flag, enum ruby_basic_operators bop)
 {
     if (BASIC_OP_UNREDEFINED_P(bop, redefined_flag)) {
-        if (blocks_assuming_bops) {
-            st_insert(blocks_assuming_bops, (st_data_t)block, 0);
-        }
+        RUBY_ASSERT(blocks_assuming_bops);
+
+        jit_ensure_block_entry_exit(jit);
+        st_insert(blocks_assuming_bops, (st_data_t)jit->block, 0);
         return true;
     }
     else {
@@ -206,13 +207,17 @@ add_lookup_dependency_i(st_data_t *key, st_data_t *value, st_data_t data, int ex
 //
 // @raise NoMemoryError
 static void
-assume_method_lookup_stable(VALUE receiver_klass, const rb_callable_method_entry_t *cme, block_t *block)
+assume_method_lookup_stable(VALUE receiver_klass, const rb_callable_method_entry_t *cme, jitstate_t *jit)
 {
     RUBY_ASSERT(cme_validity_dependency);
     RUBY_ASSERT(method_lookup_dependency);
     RUBY_ASSERT(rb_callable_method_entry(receiver_klass, cme->called_id) == cme);
     RUBY_ASSERT_ALWAYS(RB_TYPE_P(receiver_klass, T_CLASS) || RB_TYPE_P(receiver_klass, T_ICLASS));
     RUBY_ASSERT_ALWAYS(!rb_objspace_garbage_object_p(receiver_klass));
+
+    jit_ensure_block_entry_exit(jit);
+
+    block_t *block = jit->block;
 
     cme_dependency_t cme_dep = { receiver_klass, (VALUE)cme };
     rb_darray_append(&block->cme_dependencies, cme_dep);
@@ -228,10 +233,13 @@ static st_table *blocks_assuming_single_ractor_mode;
 // Can raise NoMemoryError.
 RBIMPL_ATTR_NODISCARD()
 static bool
-assume_single_ractor_mode(block_t *block) {
+assume_single_ractor_mode(jitstate_t *jit)
+{
     if (rb_multi_ractor_p()) return false;
 
-    st_insert(blocks_assuming_single_ractor_mode, (st_data_t)block, 1);
+    jit_ensure_block_entry_exit(jit);
+
+    st_insert(blocks_assuming_single_ractor_mode, (st_data_t)jit->block, 1);
     return true;
 }
 
@@ -240,9 +248,10 @@ static st_table *blocks_assuming_stable_global_constant_state;
 // Assume that the global constant state has not changed since call to this function.
 // Can raise NoMemoryError.
 static void
-assume_stable_global_constant_state(block_t *block)
+assume_stable_global_constant_state(jitstate_t *jit)
 {
-    st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)block, 1);
+    jit_ensure_block_entry_exit(jit);
+    st_insert(blocks_assuming_stable_global_constant_state, (st_data_t)jit->block, 1);
 }
 
 static int
@@ -469,13 +478,12 @@ rb_yjit_compile_iseq(const rb_iseq_t *iseq, rb_execution_context_t *ec)
 #if (OPT_DIRECT_THREADED_CODE || OPT_CALL_THREADED_CODE) && JIT_ENABLED
     bool success = true;
     RB_VM_LOCK_ENTER();
-    // TODO: I think we need to stop all other ractors here
+    rb_vm_barrier();
 
     // Compile a block version starting at the first instruction
     uint8_t *code_ptr = gen_entry_point(iseq, 0, ec);
 
-    if (code_ptr)
-    {
+    if (code_ptr) {
         iseq->body->jit_func = (yjit_func_t)code_ptr;
     }
     else {
@@ -819,6 +827,18 @@ reset_stats_bang(rb_execution_context_t *ec, VALUE self)
     return Qnil;
 }
 
+// Primitive for yjit.rb. For testing running out of executable memory
+static VALUE
+simulate_oom_bang(rb_execution_context_t *ec, VALUE self)
+{
+    if (RUBY_DEBUG && cb && ocb) {
+        // Only simulate in debug builds for paranoia.
+        cb_set_pos(cb, cb->mem_size-1);
+        cb_set_pos(ocb, ocb->mem_size-1);
+    }
+    return Qnil;
+}
+
 #include "yjit.rbinc"
 
 #if YJIT_STATS
@@ -894,6 +914,8 @@ rb_yjit_iseq_mark(const struct rb_iseq_constant_body *body)
 void
 rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
 {
+    rb_vm_barrier();
+
     rb_darray_for(body->yjit_blocks, version_array_idx) {
         rb_yjit_block_array_t version_array = rb_darray_get(body->yjit_blocks, version_array_idx);
 
@@ -927,6 +949,11 @@ rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
                 VALUE possibly_moved = rb_gc_location(object);
                 // Only write when the VALUE moves, to be CoW friendly.
                 if (possibly_moved != object) {
+                    // Possibly unlock the page we need to update
+                    cb_mark_position_writeable(cb, offset_to_value);
+
+                    // Object could cross a page boundary, so unlock there as well
+                    cb_mark_position_writeable(cb, offset_to_value + SIZEOF_VALUE - 1);
                     memcpy(value_address, &possibly_moved, SIZEOF_VALUE);
                 }
             }
@@ -934,6 +961,15 @@ rb_yjit_iseq_update_references(const struct rb_iseq_constant_body *body)
             // Update the machine code page this block lives on
             //block->code_page = rb_gc_location(block->code_page);
         }
+    }
+
+    /* If YJIT isn't initialized, then cb or ocb could be NULL. */
+    if (cb) {
+        cb_mark_all_executable(cb);
+    }
+
+    if (ocb) {
+        cb_mark_all_executable(ocb);
     }
 }
 
@@ -1210,12 +1246,17 @@ rb_yjit_init(struct rb_yjit_options *options)
         rb_yjit_opts.max_versions = 4;
     }
 
+    // If type propagation is disabled, max 1 version per block
+    if (rb_yjit_opts.no_type_prop) {
+        rb_yjit_opts.max_versions = 1;
+    }
+
     blocks_assuming_stable_global_constant_state = st_init_numtable();
     blocks_assuming_single_ractor_mode = st_init_numtable();
     blocks_assuming_bops = st_init_numtable();
 
-    yjit_init_core();
     yjit_init_codegen();
+    yjit_init_core();
 
     // YJIT Ruby module
     mYjit = rb_define_module_under(rb_cRubyVM, "YJIT");

@@ -123,13 +123,13 @@ module GC
 
   #  call-seq:
   #     GC.stat -> Hash
-  #     GC.stat(hash) -> hash
+  #     GC.stat(hash) -> Hash
   #     GC.stat(:key) -> Numeric
   #
   #  Returns a Hash containing information about the GC.
   #
-  #  The contents of the hash are implementation specific and may be changed in
-  #  the future.
+  #  The contents of the hash are implementation specific and may change in
+  #  the future without notice.
   #
   #  The hash includes information about internal statistics about GC such as:
   #
@@ -191,7 +191,7 @@ module GC
   #  it is overwritten and returned.
   #  This is intended to avoid probe effect.
   #
-  #  This method is only expected to work on C Ruby.
+  #  This method is only expected to work on CRuby.
   def self.stat hash_or_key = nil
     Primitive.gc_stat hash_or_key
   end
@@ -265,6 +265,41 @@ module GC
   # otherwise.
   def self.using_rvargc?
     GC::INTERNAL_CONSTANTS[:SIZE_POOL_COUNT] > 1
+  end
+
+
+  # call-seq:
+  #    GC.measure_total_time = true/false
+  #
+  # Enable to measure GC time.
+  # You can get the result with `GC.stat(:time)`.
+  # Note that the GC time measurement can introduce the performance regression.
+  def self.measure_total_time=(flag)
+    Primitive.cstmt! %{
+      rb_objspace.flags.measure_gc = RTEST(flag) ? TRUE : FALSE;
+      return flag;
+    }
+  end
+
+  # call-seq:
+  #    GC.measure_total_time -> true/false
+  #
+  # Return measure_total_time flag (default: true).
+  # Note that measurement can affect the application performance.
+  def self.measure_total_time
+    Primitive.cexpr! %{
+      RBOOL(rb_objspace.flags.measure_gc)
+    }
+  end
+
+  # call-seq:
+  #    GC.total_time -> int
+  #
+  # Return measured GC total time in nano seconds.
+  def self.total_time
+    Primitive.cexpr! %{
+      ULL2NUM(rb_objspace.profile.total_time_ns)
+    }
   end
 end
 

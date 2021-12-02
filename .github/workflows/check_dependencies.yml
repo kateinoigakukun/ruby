@@ -11,11 +11,15 @@ on:
       - '**.md'
       - '**.rdoc'
 
+concurrency:
+  group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
+
 jobs:
   update-deps:
     strategy:
       matrix:
-        os: [ubuntu-20.04, macos-11]
+        os: [ubuntu-20.04]
       fail-fast: true
     runs-on: ${{ matrix.os }}
     steps:

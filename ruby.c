@@ -1107,6 +1107,9 @@ setup_yjit_options(const char *s, struct rb_yjit_options *yjit_opt)
     else if (yjit_opt_match_noarg(s, l, "greedy-versioning")) {
         yjit_opt->greedy_versioning = true;
     }
+    else if (yjit_opt_match_noarg(s, l, "no-type-prop")) {
+        yjit_opt->no_type_prop = true;
+    }
     else if (yjit_opt_match_noarg(s, l, "stats")) {
         yjit_opt->gen_stats = true;
     }
@@ -1896,12 +1899,6 @@ process_options(int argc, char **argv, ruby_cmdline_options_t *opt)
          * has not happened yet.
          */
         rb_warning("-K is specified; it is for 1.8 compatibility and may cause odd behavior");
-
-#ifdef __OpenBSD__
-    /* Disable yjit on OpenBSD, stops --enable-all from failing with:
-       mmap call failed: Not supported */
-    opt->features.set &= ~FEATURE_BIT(yjit);
-#endif
 
 #if USE_MJIT
     if (opt->features.set & FEATURE_BIT(jit)) {

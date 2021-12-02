@@ -69,6 +69,9 @@ YJIT_DECLARE_COUNTERS(
     send_zsuper_method,
     send_undef_method,
     send_optimized_method,
+    send_optimized_method_send,
+    send_optimized_method_call,
+    send_optimized_method_block_call,
     send_missing_method,
     send_bmethod,
     send_refined_method,
@@ -119,6 +122,9 @@ YJIT_DECLARE_COUNTERS(
     vm_insns_count,
     compiled_iseq_count,
     compiled_block_count,
+    compilation_failure,
+
+    exit_from_branch_stub,
 
     invalidation_count,
     invalidate_method_lookup,

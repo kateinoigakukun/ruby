@@ -67,9 +67,19 @@ struct rb_objspace; /* in vm_core.h */
     rb_obj_write((VALUE)(a), UNALIGNED_MEMBER_ACCESS((VALUE *)(slot)), \
                  (VALUE)(b), __FILE__, __LINE__)
 
-typedef struct ractor_newobj_cache {
+#if USE_RVARGC
+# define SIZE_POOL_COUNT 4
+#else
+# define SIZE_POOL_COUNT 1
+#endif
+
+typedef struct ractor_newobj_size_pool_cache {
     struct RVALUE *freelist;
     struct heap_page *using_page;
+} rb_ractor_newobj_size_pool_cache_t;
+
+typedef struct ractor_newobj_cache {
+    rb_ractor_newobj_size_pool_cache_t size_pool_caches[SIZE_POOL_COUNT];
 } rb_ractor_newobj_cache_t;
 
 /* gc.c */
@@ -99,6 +109,7 @@ VALUE rb_class_allocate_instance(VALUE klass);
 void rb_gc_ractor_newobj_cache_clear(rb_ractor_newobj_cache_t *newobj_cache);
 size_t rb_gc_obj_slot_size(VALUE obj);
 bool rb_gc_size_allocatable_p(size_t size);
+int rb_objspace_garbage_object_p(VALUE obj);
 
 RUBY_SYMBOL_EXPORT_BEGIN
 /* gc.c (export) */
