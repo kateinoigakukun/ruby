@@ -12422,7 +12422,7 @@ current_process_time(struct timespec *ts)
         if (getrusage(RUSAGE_SELF, &usage) == 0) {
             time = usage.ru_utime;
             ts->tv_sec = time.tv_sec;
-            ts->tv_nsec = time.tv_usec * 1000;
+            ts->tv_nsec = (long)time.tv_usec * 1000;
             return true;
         }
     }
