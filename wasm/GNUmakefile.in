@@ -1,0 +1,9 @@
+include Makefile
+
+GNUmakefile: $(srcdir)/wasm/GNUmakefile.in
+
+include $(srcdir)/template/GNUmakefile.in
+
+ruby.wasm: $(PROGRAM)
+	wasm-opt $(PROGRAM) --asyncify -O -g --pass-arg=asyncify-ignore-imports -o $@
+

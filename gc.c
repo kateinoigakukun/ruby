@@ -29,8 +29,8 @@
 #endif
 
 #if defined(__wasm__)
-# include <rb-wasm-support/setjmp.h>
-# include <rb-wasm-support/machine.h>
+# include "wasm/setjmp.h"
+# include "wasm/machine.h"
 #else
 # include <setjmp.h>
 #endif

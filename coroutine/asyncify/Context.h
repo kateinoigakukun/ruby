@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include <rb-wasm-support/asyncify.h>
-#include <rb-wasm-support/machine.h>
-#include <rb-wasm-support/fiber.h>
+#include "wasm/asyncify.h"
+#include "wasm/machine.h"
+#include "wasm/fiber.h"
 
 #define COROUTINE void
 

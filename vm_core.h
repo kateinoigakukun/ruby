@@ -63,7 +63,7 @@
 #endif
 
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)
-# include <rb-wasm-support/setjmp.h>
+# include "wasm/setjmp.h"
 #else
 # include <setjmp.h>
 #endif
