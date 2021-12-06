@@ -31,9 +31,9 @@
 #endif
 
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)
-# include <rb-wasm-support/asyncify.h>
-# include <rb-wasm-support/setjmp.h>
-# include <rb-wasm-support/fiber.h>
+# include "wasm/asyncify.h"
+# include "wasm/setjmp.h"
+# include "wasm/fiber.h"
 #endif
 
 #if defined(__wasm__) && !defined(__EMSCRIPTEN__)

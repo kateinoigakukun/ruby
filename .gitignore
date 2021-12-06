@@ -54,6 +54,7 @@ lcov*.info
 /*-fake.rb
 /*.dll
 /*.exe
+/*.wasm
 /*.res
 /*.pc
 /*.rc
@@ -232,3 +233,6 @@ lcov*.info
 /rb_mjit_header.h
 /mjit_config.h
 /include/ruby-*/*/rb_mjit_min_header-*.h
+
+# /wasm/
+!/wasm/*.S

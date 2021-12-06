@@ -44,8 +44,6 @@ jobs:
           pushd build-sdk
           curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-14/wasi-sdk-14.0-macos.tar.gz
           tar xfz wasi-sdk-14.0-macos.tar.gz
-          curl -LO https://github.com/kateinoigakukun/rb-wasm-support/releases/download/0.4.0/rb-wasm-support-wasm32-unknown-wasi.tar.gz
-          tar xfz rb-wasm-support-wasm32-unknown-wasi.tar.gz
           curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-14/wasi-sysroot-14.0.tar.gz
           tar xfz wasi-sysroot-14.0.tar.gz
         working-directory: src
@@ -69,18 +67,15 @@ jobs:
             LDFLAGS=" \
               --sysroot=$BUILD_SDK/wasi-sysroot \
               -L$BUILD_SDK/wasi-sysroot/lib/wasm32-wasi \
-              -L$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/lib \
               -lwasi-emulated-mman \
               -lwasi-emulated-signal \
               -lwasi-emulated-getpid \
               -lwasi-emulated-process-clocks \
-              -lrb_wasm_support \
               -Xlinker --stack-first \
               -Xlinker -z -Xlinker stack-size=16777216 \
             " \
             CFLAGS=" \
               --sysroot=$BUILD_SDK/wasi-sysroot \
-              -I$BUILD_SDK/rb-wasm-support-wasm32-unknown-wasi/include \
               -D_WASI_EMULATED_SIGNAL \
               -D_WASI_EMULATED_MMAN \
               -D_WASI_EMULATED_GETPID \

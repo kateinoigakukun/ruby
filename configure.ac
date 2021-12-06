@@ -3803,6 +3803,15 @@ AS_CASE(["$target_os"],
 	    LIBRUBYARG='-l$(RUBY_SO_NAME)'
 	])
 	],
+    [wasi*], [
+        FIRSTMAKEFILE=GNUmakefile:wasm/GNUmakefile.in
+        AC_LIBOBJ([wasm/fiber])
+        AC_LIBOBJ([wasm/machine])
+        AC_LIBOBJ([wasm/setjmp])
+        AC_LIBOBJ([wasm/machine_core])
+        AC_LIBOBJ([wasm/setjmp_core])
+        PLATFORM_DIR=wasm
+        ],
     [hpux*], [
 	AS_CASE(["$YACC"],[*yacc*], [
 	    XCFLAGS="$XCFLAGS -DYYMAXDEPTH=300"

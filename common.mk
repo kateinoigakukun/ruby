@@ -1008,6 +1008,18 @@ win32/win32.$(OBJEXT): {$(VPATH)}win32/win32.c {$(VPATH)}win32/file.h \
 win32/file.$(OBJEXT): {$(VPATH)}win32/file.c {$(VPATH)}win32/file.h \
   $(RUBY_H_INCLUDES) $(PLATFORM_D)
 
+wasm/fiber.$(OBJEXT): $(srcdir)/wasm/fiber.c \
+  $(srcdir)/wasm/fiber.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+wasm/machine.$(OBJEXT): $(srcdir)/wasm/machine.c \
+  $(srcdir)/wasm/machine.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+wasm/setjmp.$(OBJEXT): $(srcdir)/wasm/setjmp.c \
+  $(srcdir)/wasm/setjmp.h $(srcdir)/wasm/machine.h \
+  $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+wasm/machine_core.$(OBJEXT): $(srcdir)/wasm/machine_core.S $(PLATFORM_D)
+	$(Q) $(CC) $(CFLAGS) $(COUTFLAG)$@ -c $(srcdir)/wasm/machine_core.S
+wasm/setjmp_core.$(OBJEXT): $(srcdir)/wasm/setjmp_core.S $(PLATFORM_D)
+	$(Q) $(CC) $(CFLAGS) $(COUTFLAG)$@ -c $(srcdir)/wasm/setjmp_core.S
+
 $(NEWLINE_C): $(srcdir)/enc/trans/newline.trans $(tooldir)/transcode-tblgen.rb
 	$(Q) $(MAKEDIRS) $(@D)
 	$(Q) $(BASERUBY) "$(tooldir)/transcode-tblgen.rb" -vo $@ $(srcdir)/enc/trans/newline.trans
