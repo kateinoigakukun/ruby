@@ -1636,6 +1636,14 @@ ruby_init_prelude(void)
 
 void rb_call_builtin_inits(void);
 
+// Initialize extra optional exts linked statically
+#if __has_attribute(weak)
+__attribute__((weak))
+#endif
+void Init_extra_exts(void)
+{
+}
+
 static void
 ruby_opt_init(ruby_cmdline_options_t *opt)
 {
@@ -1654,6 +1662,7 @@ ruby_opt_init(ruby_cmdline_options_t *opt)
     rb_warning_category_update(opt->warn.mask, opt->warn.set);
 
     Init_ext(); /* load statically linked extensions before rubygems */
+    Init_extra_exts();
     rb_call_builtin_inits();
     ruby_init_prelude();
 
