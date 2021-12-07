@@ -42,6 +42,7 @@ m4_include([tool/m4/ruby_try_cflags.m4])dnl
 m4_include([tool/m4/ruby_try_cxxflags.m4])dnl
 m4_include([tool/m4/ruby_try_ldflags.m4])dnl
 m4_include([tool/m4/ruby_universal_arch.m4])dnl
+m4_include([tool/m4/ruby_wasm.m4])dnl
 m4_include([tool/m4/ruby_werror_flag.m4])dnl
 
 AC_ARG_VAR([cflags], [additional CFLAGS (ignored when CFLAGS is given)])dnl
@@ -344,6 +345,8 @@ AS_CASE(["$target_os"],
 ])
 
 RUBY_MINGW32
+RUBY_WASM
+
 AC_SUBST(GCC)
 AC_SUBST(LD)
 AS_IF([test "$GCC" = yes], [
@@ -1218,6 +1221,9 @@ main()
 		RUBY_APPEND_OPTIONS(LDFLAGS, "-sFORCE_FILESYSTEM=1")
 		ac_cv_func_shutdown=no
 		],
+[wasi*],[	LIBS="-lm $LIBS"
+		POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) --pass-arg=asyncify-ignore-imports -o \$@ \$@${POSTLINK:+; $POSTLINK}"
+		]
 [	LIBS="-lm $LIBS"])
 : ${ORIG_LIBS=$LIBS}
 
