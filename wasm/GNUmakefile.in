@@ -1,7 +1,23 @@
 include Makefile
 include $(srcdir)/template/GNUmakefile.in
 
-GNUmakefile: $(srcdir)/wasm/GNUmakefile.in
+wasmdir = $(srcdir)/wasm
+GNUmakefile: $(wasmdir)/GNUmakefile.in
 WASMOPT = @WASMOPT@
 wasmoptflags = @wasmoptflags@
 
+WASM_TESTRUNNER = wasmtime
+WASM_TESTS = $(wasmdir)/tests/machine_test $(wasmdir)/tests/setjmp_test $(wasmdir)/tests/fiber_test
+WASM_OBJS  = $(wasmdir)/machine_core.o $(wasmdir)/machine.o $(wasmdir)/setjmp.o $(wasmdir)/setjmp_core.o $(wasmdir)/fiber.o
+
+test-wasm: $(WASM_TESTS)
+	$(foreach x,$(WASM_TESTS), \
+		$(Q) $(WASM_TESTRUNNER) $(x);)
+clean-test-wasm:
+	@$(RM) $(WASM_TESTS)
+
+$(wasmdir)/tests/%: $(wasmdir)/tests/%.c $(WASM_OBJS)
+	$(Q) $(CC) -g $(XCFLAGS) $(CFLAGS) $^ -o $@
+	$(Q) $(WASMOPT) -g --asyncify --pass-arg=asyncify-ignore-imports -o $@ $@
+
+.PHONY: test-wasm clean-test-wasm
