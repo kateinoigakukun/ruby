@@ -1,0 +1,7 @@
+#!/bin/sh
+# override the wasm-opt tool to use our fake wasm-opt
+# to avoid mis-optimization before asyncify.
+
+src_dir="$(cd "$(dirname "$0")/../wasm" && pwd)"
+export PATH="$src_dir:$PATH"
+exec "$@"
