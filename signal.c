@@ -46,7 +46,7 @@
 #include "ractor_core.h"
 
 #if defined(__wasi__)
-int kill(pid_t pid, int sig);
+# include "wasm/missing.h"
 #endif
 
 #ifdef NEED_RUBY_ATOMIC_OPS

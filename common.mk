@@ -1008,6 +1008,7 @@ win32/win32.$(OBJEXT): {$(VPATH)}win32/win32.c {$(VPATH)}win32/file.h \
 win32/file.$(OBJEXT): {$(VPATH)}win32/file.c {$(VPATH)}win32/file.h \
   $(RUBY_H_INCLUDES) $(PLATFORM_D)
 
+wasm/missing.$(OBJEXT): $(srcdir)/wasm/missing.c $(PLATFORM_D)
 wasm/fiber.$(OBJEXT): $(srcdir)/wasm/fiber.c \
   $(srcdir)/wasm/fiber.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
 wasm/machine.$(OBJEXT): $(srcdir)/wasm/machine.c \

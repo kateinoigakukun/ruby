@@ -31,20 +31,7 @@
 #endif
 
 #ifdef __wasi__
-# define WNOHANG 0
-int execl(const char *path, const char *arg, ...);
-int execle(const char *path, const char *arg, ...);
-int execv(const char *path, char *const argv[]);
-int execve(const char *filename, char *const argv[], char *const envp[]);
-int getppid();
-int system(const char *command);
-uid_t geteuid(void);
-gid_t getegid(void);
-uid_t getuid(void);
-gid_t getgid(void);
-int dup(int oldfd);
-int dup2(int oldfd, int newfd);
-mode_t umask(mode_t);
+# include "wasm/missing.h"
 #endif
 
 #ifdef HAVE_FCNTL_H

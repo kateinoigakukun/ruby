@@ -73,13 +73,7 @@
 #include "ruby/internal/error.h"
 
 #ifdef __wasi__
-uid_t geteuid(void);
-gid_t getegid(void);
-uid_t getuid(void);
-gid_t getgid(void);
-int dup(int oldfd);
-int dup2(int oldfd, int newfd);
-int pipe(int pipefd[2]);
+# include "wasm/missing.h"
 #endif
 
 #ifndef MAXPATHLEN

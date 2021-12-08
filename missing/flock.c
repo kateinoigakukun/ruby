@@ -2,6 +2,13 @@
 #include "ruby/ruby.h"
 
 #if defined _WIN32
+#elif defined __wasi__
+#include <errno.h>
+
+int flock(int fd, int operation) {
+  errno = EINVAL;
+  return -1;
+}
 #elif defined HAVE_FCNTL && defined HAVE_FCNTL_H
 
 /* These are the flock() constants.  Since this systems doesn't have
@@ -18,14 +25,6 @@
 # endif
 # ifndef LOCK_UN
 #  define LOCK_UN 8
-# endif
-
-# ifdef __wasi__
-#  define F_RDLCK 0
-#  define F_WRLCK 0
-#  define F_UNLCK 0
-#  define F_SETLK 0
-#  define F_SETLKW 0
 # endif
 
 #include <fcntl.h>

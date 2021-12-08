@@ -47,15 +47,7 @@
 #endif
 
 #if defined(__wasi__)
-
-int dup();
-int dup2();
-int pipe(int pipefd[2]);
-int shutdown(int, int);
-int chmod(const char *path, mode_t mode);
-int chown(const char *path, uid_t owner, gid_t group);
-uid_t getuid(void);
-
+# include "wasm/missing.h"
 #endif
 
 #include <sys/types.h>
@@ -123,11 +115,6 @@ uid_t getuid(void);
 
 #ifdef HAVE_SYS_WAIT_H
 # include <sys/wait.h>		/* for WNOHANG on BSD */
-#endif
-
-// FIXME(katei): hack to pass compilation
-#ifdef __wasi__
-# define WNOHANG 0
 #endif
 
 #ifdef HAVE_COPYFILE_H
