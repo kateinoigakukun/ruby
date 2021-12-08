@@ -405,6 +405,13 @@ AS_CASE(["$build_os"],
     ])
     rm -fr conftest*
   ])
+AS_CASE(["$target_os"],
+  [wasi*], [
+    # Clang linker automatically uses wasm-opt but it causes mis optimization,
+    # so wrap clang to avoid it
+    CC_WRAPPER=`cd -P "${tooldir}" && pwd`/wasm-clangw
+    CC="$CC_WRAPPER $CC"
+  ])
 
 cc_version=
 for option in --version -v -V -qversion; do
@@ -4253,8 +4260,7 @@ AS_MESSAGE([$PACKAGE library version = $ruby_version])
 AS_IF([test x"$CC_WRAPPER" != x], [
     CC='$(CC_WRAPPER) '"${CC@%:@$CC_WRAPPER }"
     CPP='$(CC_WRAPPER) '"${CPP@%:@$CC_WRAPPER }"
-    CC_WRAPPER='$(rubyarchdir)/darwin-cc'
-    XCC_WRAPPER='$(top_srcdir)/tool/darwin-cc'
+    XCC_WRAPPER="$CC_WRAPPER"
 ])
 AC_SUBST(CC_WRAPPER, '')
 AC_SUBST(XCC_WRAPPER)
