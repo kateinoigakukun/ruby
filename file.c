@@ -152,40 +152,9 @@ int flock(int, int);
 # include <stdlib.h>
 #endif
 
-
-#ifdef __wasi__
-#include <stdio.h>
-#include <errno.h>
-#define define_wasi_stub(fn, res) fn { \
-  return res; \
-}
-// FIXME(katei): disable these uses
-define_wasi_stub(uid_t geteuid(void), 0)
-define_wasi_stub(uid_t getuid(void), 0)
-define_wasi_stub(int getegid(void), 0)
-define_wasi_stub(int getgid(void), 0)
-
-define_wasi_stub(char *getlogin(void), 0)
-define_wasi_stub(int umask(int mask), 0)
-define_wasi_stub(int chmod(const char *pathname, int mode), 0)
-define_wasi_stub(int chown(const char *pathname, int owner, int group), 0)
-
-define_wasi_stub(int pipe(int pipefd[2]), ENOTSUP)
-define_wasi_stub(int dup(int oldfd), ENOTSUP)
-define_wasi_stub(int dup2(int oldfd, int newfd), ENOTSUP)
-
-define_wasi_stub(int kill(pid_t pid, int sig), 0)
-define_wasi_stub(void tzset(void),)
-
-define_wasi_stub(int execl(const char *path, const char *arg, ...), ENOTSUP)
-define_wasi_stub(int execle(const char *path, const char *arg, ...), ENOTSUP)
-define_wasi_stub(int execv(const char *path, char *const argv[]), ENOTSUP)
-define_wasi_stub(int execve(const char *filename, char *const argv[], char *const envp[]), ENOTSUP)
-define_wasi_stub(int getppid(), 0)
-define_wasi_stub(int system(const char *command), ENOTSUP)
-
+#if defined(__wasi__)
+# include "wasm/missing.h"
 #endif
-
 
 #include "dln.h"
 #include "encindex.h"
