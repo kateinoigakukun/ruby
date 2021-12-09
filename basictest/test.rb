@@ -1960,7 +1960,8 @@ test_ok(p1.call == 5)
 test_ok(i7 == nil)
 end
 
-if RUBY_PLATFORM != "wasm32-wasi"
+# WASI doesn't support spawning a new process for now.
+unless /wasi/ =~ RUBY_PLATFORM
 test_check "system"
 test_ok(`echo foobar` == "foobar\n")
 test_ok(`./miniruby -e 'print "foobar"'` == 'foobar')
@@ -2011,7 +2012,7 @@ test_ok(done)
 
 File.unlink script_tmp or `/bin/rm -f "#{script_tmp}"`
 File.unlink "#{script_tmp}.bak" or `/bin/rm -f "#{script_tmp}.bak"`
-end # RUBY_PLATFORM != "wasm32-wasi"
+end # not /wasi/ =~ RUBY_PLATFORM
 
 test_check "const"
 TEST1 = 1

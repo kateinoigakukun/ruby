@@ -65,9 +65,11 @@ assert_equal ':a3c',            ':"a#{1+2}c".inspect'
 assert_equal 'Symbol',          ':"a#{1+2}c".class'
 
 # xstring
-# TODO(katei): disable only under WASI
-# assert_equal "foo\n",           %q(`echo foo`)
-# assert_equal "foo\n",           %q(s = "foo"; `echo #{s}`)
+# WASI doesn't support spawning a new process for now.
+unless /wasi/ =~ RUBY_PLATFORM
+  assert_equal "foo\n",           %q(`echo foo`)
+  assert_equal "foo\n",           %q(s = "foo"; `echo #{s}`)
+end
 
 # regexp
 assert_equal '',                '//.source'
