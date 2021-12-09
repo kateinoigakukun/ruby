@@ -3,6 +3,8 @@
 
 #if defined(__wasi__)
 
+#include <stdio.h>
+
 #define WNOHANG 0
 
 int posix_madvise(void *addr, size_t len, int advice);
@@ -22,6 +24,10 @@ int umask(int mask);
 int chmod(const char *pathname, int mode);
 
 int chown(const char *pathname, int owner, int group);
+
+int pclose(FILE *stream);
+
+FILE *popen(const char *command, const char *type);
 
 int pipe(int pipefd[2]);
 

@@ -6604,11 +6604,7 @@ pipe_finalize(rb_io_t *fptr, int noraise)
 #if !defined(HAVE_WORKING_FORK) && !defined(_WIN32)
     int status = 0;
     if (fptr->stdio_file) {
-# if defined(__wasi__)
-        status = ENOTSUP;
-# else
         status = pclose(fptr->stdio_file);
-# endif
     }
     fptr->fd = -1;
     fptr->stdio_file = 0;
@@ -6998,11 +6994,6 @@ pipe_open(VALUE execarg_obj, const char *modestr, int fmode,
         close(arg.pair[0]);
         fd = arg.pair[1];
     }
-#elif defined(__wasi__)
-    // WASI doesn't support spawning a process
-    e = ENOTSUP;
-    fp = NULL;
-    rb_syserr_fail_path(e, prog);
 #else
     cmd = rb_execarg_commandline(eargp, &prog);
     if (!NIL_P(execarg_obj)) {
