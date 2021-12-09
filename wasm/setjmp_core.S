@@ -1,5 +1,5 @@
 	.text
-	.file	"setjmp.S"
+	.file	"setjmp_core.S"
 
 	.functype	_rb_wasm_setjmp_internal (i32) -> (i32)
 	.globaltype 	__stack_pointer, i32

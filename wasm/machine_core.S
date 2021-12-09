@@ -1,5 +1,5 @@
 	.text
-	.file	"scan_stack.S"
+	.file	"machine_core.S"
 
 	.globaltype __stack_pointer, i32
 
