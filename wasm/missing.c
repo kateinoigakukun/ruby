@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <sys/types.h>
+#include "wasm/missing.h"
 
 #define WASM_MISSING_LIBC_FUNC __attribute__((weak))
 
@@ -77,6 +78,16 @@ int umask(int mask) { return 0; }
 
 WASM_MISSING_LIBC_FUNC
 int mprotect(const void *addr, size_t len, int prot) { return 0; }
+
+int pclose(FILE *stream) {
+  errno = ENOTSUP;
+  return -1;
+}
+
+FILE *popen(const char *command, const char *type) {
+  errno = ENOTSUP;
+  return NULL;
+}
 
 WASM_MISSING_LIBC_FUNC
 int pipe(int pipefd[2]) {
