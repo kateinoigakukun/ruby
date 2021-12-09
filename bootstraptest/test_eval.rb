@@ -218,24 +218,22 @@ assert_equal %q{[10, main]}, %q{
 
 %w[break next redo].each do |keyword|
   assert_match %r"Can't escape from eval with #{keyword}\b", %{
-    STDERR.reopen(STDOUT)
     begin
       eval "0 rescue #{keyword}"
     rescue SyntaxError => e
       e.message
     end
-  }, '[ruby-dev:31372]'
+  }, '[ruby-dev:31372]', capture_stderr: true
 end
 
 assert_normal_exit %q{
-  STDERR.reopen(STDOUT)
   class Foo
      def self.add_method
        class_eval("def some-bad-name; puts 'hello' unless @some_variable.some_function(''); end")
      end
   end
   Foo.add_method
-}, '[ruby-core:14556] reported by Frederick Cheung'
+}, '[ruby-core:14556] reported by Frederick Cheung', capture_stderr: true
 
 assert_equal 'ok', %q{
   class Module

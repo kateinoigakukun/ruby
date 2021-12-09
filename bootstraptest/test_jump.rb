@@ -147,7 +147,6 @@ assert_equal %q{131}, %q{
   }
 }
 assert_match %r{Invalid retry}, %q{
-STDERR.reopen(STDOUT)
 begin
   eval %q{
     1.times{
@@ -157,7 +156,7 @@ begin
 rescue SyntaxError => e
   e.message
 end
-}
+}, capture_stderr: true
 assert_equal %q{3}, %q{
   def m
     return 3
@@ -297,7 +296,6 @@ assert_equal "true", %q{
 }, '[ruby-core:21379]'
 
 assert_match %r{Invalid yield}, %q{
-STDERR.reopen(STDOUT)
 begin
   eval %q{
     class Object
@@ -311,4 +309,4 @@ begin
 rescue SyntaxError => e
   e.message
 end
-}
+}, capture_stderr: true

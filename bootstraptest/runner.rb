@@ -299,9 +299,9 @@ def assert_equal(expected, testsrc, message = '', opt = '', **argh)
   }
 end
 
-def assert_match(expected_pattern, testsrc, message = '')
+def assert_match(expected_pattern, testsrc, message = '', **argh)
   newtest
-  assert_check(testsrc, message) {|result|
+  assert_check(testsrc, message, **argh) {|result|
     if expected_pattern =~ result
       nil
     else
@@ -453,11 +453,16 @@ def make_srcfile(src, frozen_string_literal: nil)
   filename
 end
 
-def get_result_string(src, opt = '', **argh)
+def get_result_string(src, opt = '', capture_stderr: false, **argh)
   if @ruby
     filename = make_srcfile(src, **argh)
     begin
-      `#{@ruby} -W0 #{opt} #{filename}`
+      execopt = {}
+      if capture_stderr
+        execopt[:err] = [:child, :out]
+      end
+      io = IO.popen("#{@ruby} -W0 #{opt} #{filename}", execopt)
+      io.read
     ensure
       raise Interrupt if $? and $?.signaled? && $?.termsig == Signal.list["INT"]
     end
