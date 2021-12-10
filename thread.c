@@ -4209,9 +4209,6 @@ sigwait_timeout(rb_thread_t *th, int sigwait_fd, const rb_hrtime_t *orig,
 static VALUE
 do_select(VALUE p)
 {
-#if defined(__wasi__)
-    return (VALUE)0;
-#else
     struct select_set *set = (struct select_set *)p;
     int result = 0;
     int lerrno;
@@ -4258,7 +4255,6 @@ do_select(VALUE p)
     }
 
     return (VALUE)result;
-#endif
 }
 
 static rb_fdset_t *
