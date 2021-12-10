@@ -97,5 +97,11 @@ void rb_sigwait_sleep(rb_thread_t *th, int sigwait_fd, const rb_hrtime_t *rel) {
 
 static void native_sleep(rb_thread_t *th, rb_hrtime_t *rel) {}
 
+static int native_fd_select(int n, rb_fdset_t *readfds, rb_fdset_t *writefds, rb_fdset_t *exceptfds, struct timeval *timeout, rb_thread_t *th)
+{
+    return rb_fd_select(n, readfds, writefds, exceptfds, timeout);
+}
+
+
 static VALUE rb_thread_start_unblock_thread(void) { return Qfalse; }
 #endif /* THREAD_SYSTEM_DEPENDENT_IMPLEMENTATION */
