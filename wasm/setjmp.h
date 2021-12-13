@@ -28,13 +28,10 @@ void _rb_wasm_longjmp(rb_wasm_jmp_buf *env, int val);
 
 void *rb_wasm_handle_jmp_unwind(void);
 
-#ifdef RB_WASM_SUPPORT_EMULATE_SETJMP
 
 typedef rb_wasm_jmp_buf jmp_buf;
 
 #define setjmp(env) rb_wasm_setjmp(env)
 #define longjmp(env, val) rb_wasm_longjmp(env, val)
-
-#endif
 
 #endif

@@ -81,7 +81,6 @@ jobs:
               -D_WASI_EMULATED_MMAN \
               -D_WASI_EMULATED_GETPID \
               -D_WASI_EMULATED_PROCESS_CLOCKS \
-              -DRB_WASM_SUPPORT_EMULATE_SETJMP \
             " \
             optflags="${{ matrix.entry.optflags }}" \
             debugflags="${{ matrix.entry.debugflags }}" \
