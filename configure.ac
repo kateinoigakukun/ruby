@@ -1228,7 +1228,8 @@ main()
 		RUBY_APPEND_OPTIONS(LDFLAGS, "-sFORCE_FILESYSTEM=1")
 		ac_cv_func_shutdown=no
 		],
-[wasi*],[	LIBS="-lm $LIBS"
+[wasi*],[	LIBS="-lm -lwasi-emulated-mman -lwasi-emulated-signal -lwasi-emulated-getpid -lwasi-emulated-process-clocks $LIBS"
+		RUBY_APPEND_OPTIONS(CFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
 		POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) --pass-arg=asyncify-ignore-imports -o \$@ \$@${POSTLINK:+; $POSTLINK}"
 		]
 [	LIBS="-lm $LIBS"])

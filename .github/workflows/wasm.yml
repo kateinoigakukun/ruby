@@ -68,19 +68,11 @@ jobs:
             LDFLAGS=" \
               --sysroot=$BUILD_SDK/wasi-sysroot \
               -L$BUILD_SDK/wasi-sysroot/lib/wasm32-wasi \
-              -lwasi-emulated-mman \
-              -lwasi-emulated-signal \
-              -lwasi-emulated-getpid \
-              -lwasi-emulated-process-clocks \
               -Xlinker --stack-first \
               -Xlinker -z -Xlinker stack-size=16777216 \
             " \
             CFLAGS=" \
               --sysroot=$BUILD_SDK/wasi-sysroot \
-              -D_WASI_EMULATED_SIGNAL \
-              -D_WASI_EMULATED_MMAN \
-              -D_WASI_EMULATED_GETPID \
-              -D_WASI_EMULATED_PROCESS_CLOCKS \
             " \
             optflags="${{ matrix.entry.optflags }}" \
             debugflags="${{ matrix.entry.debugflags }}" \
