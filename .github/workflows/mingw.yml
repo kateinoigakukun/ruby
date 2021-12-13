@@ -111,6 +111,8 @@ jobs:
         timeout-minutes: 5
         run: |
           make test
+      - uses: mxschmitt/action-tmate@v3
+        if: always()
 
       - name: test-all
         timeout-minutes: 45
