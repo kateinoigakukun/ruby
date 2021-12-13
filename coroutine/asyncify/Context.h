@@ -7,7 +7,7 @@
 #include "wasm/machine.h"
 #include "wasm/fiber.h"
 
-#define COROUTINE void
+#define COROUTINE void __attribute__((__noreturn__))
 
 static const int ASYNCIFY_CORO_DEBUG = 0;
 

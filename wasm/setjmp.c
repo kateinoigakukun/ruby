@@ -62,7 +62,6 @@ int _rb_wasm_setjmp_internal(rb_wasm_jmp_buf *env) {
   return 0;
 }
 
-__attribute__((noinline))
 void _rb_wasm_longjmp(rb_wasm_jmp_buf* env, int value) {
   RB_WASM_DEBUG_LOG("[%s] env = %p, env->state = %d, value = %d\n", __func__, env, env->state, value);
   assert(env->state == JMP_BUF_STATE_CAPTURED);
