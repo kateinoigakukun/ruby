@@ -65,7 +65,6 @@ int main(int argc, char **argv) {
   bool new_fiber_started = false;
   void *arg0 = NULL, *arg1 = NULL;
   void (*fiber_entry_point)(void *, void *) = NULL;
-  void (*old_entry_point)(void *, void *);
 
   while (1) {
     if (fiber_entry_point) {
@@ -87,7 +86,6 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    old_entry_point = fiber_entry_point;
     asyncify_buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1, &new_fiber_started);
     if (asyncify_buf) {
       asyncify_start_rewind(asyncify_buf);
