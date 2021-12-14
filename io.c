@@ -53,8 +53,6 @@
 #include <sys/types.h>
 #if defined HAVE_NET_SOCKET_H
 # include <net/socket.h>
-#elif defined(__wasi__)
-// FIXME(katei): no socket support on wasi for now
 #elif defined HAVE_SYS_SOCKET_H
 # include <sys/socket.h>
 #endif
