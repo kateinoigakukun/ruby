@@ -58,8 +58,6 @@ jobs:
           ../src/configure \
             --host wasm32-unknown-wasi \
             --with-static-linked-ext \
-            --with-coroutine=asyncify \
-            --disable-jit-support \
             CC=$WASI_SDK/bin/clang \
             LD=$WASI_SDK/bin/clang \
             AR=$WASI_SDK/bin/llvm-ar \
