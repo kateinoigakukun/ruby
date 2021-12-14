@@ -7,6 +7,7 @@ AC_DEFUN([RUBY_WASM_TOOLS],
         AC_MSG_ERROR([wasm-opt is required])
     ])
     AC_SUBST(wasmoptflags)
+    : ${wasmoptflags=-O3}
 
     AC_MSG_CHECKING([wheather \$WASI_SDK_PATH is set])
     AS_IF([test x"${WASI_SDK_PATH}" = x], [AC_MSG_RESULT([no])], [
