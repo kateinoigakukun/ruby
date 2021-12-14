@@ -37,6 +37,12 @@ typedef pthread_t rb_nativethread_id_t;
 typedef pthread_mutex_t rb_nativethread_lock_t;
 typedef pthread_cond_t rb_nativethread_cond_t;
 
+#elif defined(__wasi__) // no-thread platforms
+
+typedef struct {} *rb_nativethread_id_t;
+typedef struct {} *rb_nativethread_lock_t;
+typedef struct {} *rb_nativethread_cond_t;
+
 #elif defined(__DOXYGEN__)
 
 /** Opaque type that holds an ID of a native thread. */
@@ -48,15 +54,6 @@ struct rb_nativethread_lock_t;
 /** Opaque type that holds a condition variable. */
 struct rb_nativethread_cond_t;
 
-#elif defined(__wasi__)
-/** Opaque type that holds an ID of a native thread. */
-typedef struct {} *rb_nativethread_id_t;
-
-/** Opaque type that holds a lock. */
-typedef struct {} *rb_nativethread_lock_t;
-
-/** Opaque type that holds a condition variable. */
-typedef struct {} *rb_nativethread_cond_t;
 #else
 #error "unsupported thread type"
 
