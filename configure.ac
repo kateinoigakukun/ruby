@@ -408,8 +408,10 @@ AS_CASE(["$build_os"],
   ])
 AS_CASE(["$target_os"],
   [wasi*], [
-    # Clang linker automatically uses wasm-opt but it causes mis optimization,
-    # so wrap clang to avoid it
+    # Clang linker automatically uses wasm-opt with -O if it found.
+    # https://github.com/llvm/llvm-project/blob/812828984c10857a4cd260eb638c52a4411f9143/clang/lib/Driver/ToolChains/WebAssembly.cpp#L95-L118
+    # However optimization before asyncify causes misoptimization,
+    # so wrap clang to insert our fake wasm-opt, which does nothing, in PATH.
     CC_WRAPPER=`cd -P "${tooldir}" && pwd`/wasm-clangw
     CC="$CC_WRAPPER $CC"
   ])
