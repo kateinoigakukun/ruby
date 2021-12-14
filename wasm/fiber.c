@@ -11,7 +11,7 @@
 
 void rb_wasm_init_context(rb_wasm_fiber_context *fcp) {
   fcp->asyncify_buf.top = &fcp->asyncify_buf.buffer[0];
-  fcp->asyncify_buf.end = &fcp->asyncify_buf.buffer[RB_WASM_SUPPORT_FRAME_BUFFER_SIZE];
+  fcp->asyncify_buf.end = &fcp->asyncify_buf.buffer[WASM_FIBER_STACK_BUFFER_SIZE];
   fcp->is_rewinding = false;
   fcp->is_started = false;
   RB_WASM_DEBUG_LOG("[%s] fcp->asyncify_buf %p\n", __func__, &fcp->asyncify_buf);

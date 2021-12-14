@@ -1,13 +1,16 @@
 #ifndef RB_WASM_SUPPORT_SETJMP_H
 #define RB_WASM_SUPPORT_SETJMP_H
 
-#include "wasm/config.h"
 #include <stdbool.h>
+
+#ifndef WASM_SETJMP_STACK_BUFFER_SIZE
+# define WASM_SETJMP_STACK_BUFFER_SIZE 6144
+#endif
 
 struct __rb_wasm_asyncify_jmp_buf {
   void* top;
   void* end;
-  char buffer[RB_WASM_SUPPORT_FRAME_BUFFER_SIZE];
+  char buffer[WASM_SETJMP_STACK_BUFFER_SIZE];
 };
 
 typedef struct {

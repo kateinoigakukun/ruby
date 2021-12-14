@@ -2,12 +2,15 @@
 #define RB_WASM_SUPPORT_FIBER_H
 
 #include <stdbool.h>
-#include "wasm/config.h"
+
+#ifndef WASM_FIBER_STACK_BUFFER_SIZE
+# define WASM_FIBER_STACK_BUFFER_SIZE 6144
+#endif
 
 struct __rb_wasm_asyncify_fiber_ctx {
   void* top;
   void* end;
-  char buffer[RB_WASM_SUPPORT_FRAME_BUFFER_SIZE];
+  char buffer[WASM_FIBER_STACK_BUFFER_SIZE];
 };
 
 typedef struct {

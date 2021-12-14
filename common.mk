@@ -1010,12 +1010,12 @@ win32/file.$(OBJEXT): {$(VPATH)}win32/file.c {$(VPATH)}win32/file.h \
 
 wasm/missing.$(OBJEXT): $(srcdir)/wasm/missing.c $(PLATFORM_D)
 wasm/fiber.$(OBJEXT): $(srcdir)/wasm/fiber.c \
-  $(srcdir)/wasm/fiber.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+  $(srcdir)/wasm/fiber.h $(srcdir)/wasm/asyncify.h $(PLATFORM_D)
 wasm/machine.$(OBJEXT): $(srcdir)/wasm/machine.c \
-  $(srcdir)/wasm/machine.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+  $(srcdir)/wasm/machine.h $(srcdir)/wasm/asyncify.h $(PLATFORM_D)
 wasm/setjmp.$(OBJEXT): $(srcdir)/wasm/setjmp.c \
   $(srcdir)/wasm/setjmp.h $(srcdir)/wasm/machine.h \
-  $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/config.h $(PLATFORM_D)
+  $(srcdir)/wasm/asyncify.h $(PLATFORM_D)
 wasm/machine_core.$(OBJEXT): $(srcdir)/wasm/machine_core.S $(PLATFORM_D)
 	$(Q) $(CC) $(CFLAGS) $(COUTFLAG)$@ -c $(srcdir)/wasm/machine_core.S
 wasm/setjmp_core.$(OBJEXT): $(srcdir)/wasm/setjmp_core.S $(PLATFORM_D)

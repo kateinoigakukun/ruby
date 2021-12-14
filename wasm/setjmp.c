@@ -24,7 +24,7 @@ enum rb_wasm_jmp_buf_state {
 
 void async_buf_init(struct __rb_wasm_asyncify_jmp_buf* buf) {
   buf->top = &buf->buffer[0];
-  buf->end = &buf->buffer[RB_WASM_SUPPORT_FRAME_BUFFER_SIZE];
+  buf->end = &buf->buffer[WASM_SETJMP_STACK_BUFFER_SIZE];
 }
 
 static rb_wasm_jmp_buf *_rb_wasm_active_jmpbuf;
