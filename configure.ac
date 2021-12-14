@@ -42,7 +42,7 @@ m4_include([tool/m4/ruby_try_cflags.m4])dnl
 m4_include([tool/m4/ruby_try_cxxflags.m4])dnl
 m4_include([tool/m4/ruby_try_ldflags.m4])dnl
 m4_include([tool/m4/ruby_universal_arch.m4])dnl
-m4_include([tool/m4/ruby_wasm.m4])dnl
+m4_include([tool/m4/ruby_wasm_tools.m4])dnl
 m4_include([tool/m4/ruby_werror_flag.m4])dnl
 
 AC_ARG_VAR([cflags], [additional CFLAGS (ignored when CFLAGS is given)])dnl
@@ -137,6 +137,9 @@ AS_IF([test ! -z "$ac_cv_prog_CC" -a ! -z "$CC" -a "$CC" != "$ac_cv_prog_CC"], [
   AC_MSG_ERROR(cached CC is different -- throw away $cache_file
 (it is also a good idea to do 'make clean' before compiling))
 ])
+
+RUBY_WASM_TOOLS
+
 AS_CASE(["${build_os}"],
 [linux*|cygwin*|msys*], [
     # Naruse prefers GCC on Linux
@@ -345,8 +348,6 @@ AS_CASE(["$target_os"],
 ])
 
 RUBY_MINGW32
-RUBY_WASM
-
 AC_SUBST(GCC)
 AC_SUBST(LD)
 AS_IF([test "$GCC" = yes], [
