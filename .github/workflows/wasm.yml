@@ -44,8 +44,6 @@ jobs:
           pushd build-sdk
           curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-14/wasi-sdk-14.0-macos.tar.gz
           tar xfz wasi-sdk-14.0-macos.tar.gz
-          curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-14/wasi-sysroot-14.0.tar.gz
-          tar xfz wasi-sysroot-14.0.tar.gz
         working-directory: src
       - run: brew install wasmtime binaryen
       - name: Set ENV
@@ -55,25 +53,22 @@ jobs:
         working-directory: src
       - name: Run configure
         run: |
-          BUILD_SDK=$(PWD)/../src/build-sdk
+          BUILD_SDK="$PWD/../src/build-sdk"
+          WASI_SDK="$BUILD_SDK/wasi-sdk-14.0"
           ../src/configure \
             --host wasm32-unknown-wasi \
             --with-static-linked-ext \
             --with-coroutine=asyncify \
             --disable-jit-support \
-            CC=$BUILD_SDK/wasi-sdk-14.0/bin/clang \
-            LD=$BUILD_SDK/wasi-sdk-14.0/bin/clang \
-            AR=$BUILD_SDK/wasi-sdk-14.0/bin/llvm-ar \
-            RANLIB=$BUILD_SDK/wasi-sdk-14.0/bin/llvm-ranlib \
+            CC=$WASI_SDK/bin/clang \
+            LD=$WASI_SDK/bin/clang \
+            AR=$WASI_SDK/bin/llvm-ar \
+            RANLIB=$WASI_SDK/bin/llvm-ranlib \
             LDFLAGS=" \
-              --sysroot=$BUILD_SDK/wasi-sysroot \
-              -L$BUILD_SDK/wasi-sysroot/lib/wasm32-wasi \
               -Xlinker --stack-first \
               -Xlinker -z -Xlinker stack-size=16777216 \
             " \
-            CFLAGS=" \
-              --sysroot=$BUILD_SDK/wasi-sysroot \
-            " \
+            CFLAGS="--sysroot=$WASI_SDK/share/wasi-sysroot" \
             optflags="${{ matrix.entry.optflags }}" \
             debugflags="${{ matrix.entry.debugflags }}" \
             wasmoptflags="${{ matrix.entry.wasmoptflags }} ${{ matrix.entry.debugflags }}"
