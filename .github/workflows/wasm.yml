@@ -53,20 +53,14 @@ jobs:
         working-directory: src
       - name: Run configure
         run: |
-          BUILD_SDK="$PWD/../src/build-sdk"
-          WASI_SDK="$BUILD_SDK/wasi-sdk-14.0"
+          export WASI_SDK_PATH="$PWD/../src/build-sdk/wasi-sdk-14.0"
           ../src/configure \
             --host wasm32-unknown-wasi \
             --with-static-linked-ext \
-            CC=$WASI_SDK/bin/clang \
-            LD=$WASI_SDK/bin/clang \
-            AR=$WASI_SDK/bin/llvm-ar \
-            RANLIB=$WASI_SDK/bin/llvm-ranlib \
             LDFLAGS=" \
               -Xlinker --stack-first \
               -Xlinker -z -Xlinker stack-size=16777216 \
             " \
-            CFLAGS="--sysroot=$WASI_SDK/share/wasi-sysroot" \
             optflags="${{ matrix.entry.optflags }}" \
             debugflags="${{ matrix.entry.debugflags }}" \
             wasmoptflags="${{ matrix.entry.wasmoptflags }} ${{ matrix.entry.debugflags }}"
