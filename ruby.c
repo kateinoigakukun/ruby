@@ -40,6 +40,7 @@
 // workaround: redefine O_NONBLOCK to use it in #if condition because the original
 // definition is "((__wasi_fdflags_t)(1 << 2))" and __wasi_fdflags_t is unavailable
 // as #if condition expression.
+#  undef O_NONBLOCK
 #  define O_NONBLOCK ((1 << 2))
 # endif
 #elif defined(HAVE_SYS_FCNTL_H)
