@@ -87,11 +87,17 @@ static void native_reset_timer_thread(void) {
 int rb_reserved_fd_p(int fd) { return 0; }
 rb_nativethread_id_t rb_nativethread_self(void) { return NULL; }
 
-int rb_sigwait_fd_get(const rb_thread_t *th) { return -1; }
-void rb_sigwait_fd_put(const rb_thread_t *th, int fd) {
+int rb_sigwait_fd_get(const rb_thread_t *th) {
+    return -1;
+}
+
+NORETURN(void rb_sigwait_fd_put(rb_thread_t *, int));
+void rb_sigwait_fd_put(rb_thread_t *th, int fd) {
     rb_bug("not implemented, should not be called rb_sigwait_fd_put");
 }
-void rb_sigwait_sleep(rb_thread_t *th, int sigwait_fd, const rb_hrtime_t *rel) {
+
+NORETURN(void rb_sigwait_sleep(const rb_thread_t *, int, const rb_hrtime_t *));
+void rb_sigwait_sleep(const rb_thread_t *th, int sigwait_fd, const rb_hrtime_t *rel) {
     rb_bug("not implemented, should not be called rb_sigwait_sleep");
 }
 
