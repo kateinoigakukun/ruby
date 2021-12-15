@@ -33,6 +33,7 @@ int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv) {
     }
 
     asyncify_buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1, &new_fiber_started);
+    // Newly starting fiber doesn't have asyncify buffer yet, so don't rewind it for the first time entry
     if (asyncify_buf) {
       asyncify_start_rewind(asyncify_buf);
       continue;

@@ -1,3 +1,12 @@
+/*
+ This is a ucontext-like userland context switching API for WebAssembly based on Binaryen's Asyncify.
+
+ * NOTE:
+ * This mechanism doesn't take care of stack state. Just save and restore program counter and
+ * registers (rephrased as locals by Wasm term). So use-site need to save and restore the C stack pointer.
+ * This Asyncify based implementation is not much efficient and will be replaced with future stack-switching feature.
+ */
+
 #include <stdlib.h>
 #include "wasm/fiber.h"
 #include "wasm/asyncify.h"
@@ -9,18 +18,15 @@
 # define RB_WASM_DEBUG_LOG(...)
 #endif
 
-void rb_wasm_init_context(rb_wasm_fiber_context *fcp) {
+void rb_wasm_init_context(rb_wasm_fiber_context *fcp, void (*func)(void *, void *), void *arg0, void *arg1) {
   fcp->asyncify_buf.top = &fcp->asyncify_buf.buffer[0];
   fcp->asyncify_buf.end = &fcp->asyncify_buf.buffer[WASM_FIBER_STACK_BUFFER_SIZE];
   fcp->is_rewinding = false;
   fcp->is_started = false;
-  RB_WASM_DEBUG_LOG("[%s] fcp->asyncify_buf %p\n", __func__, &fcp->asyncify_buf);
-}
-
-void rb_wasm_makecontext(rb_wasm_fiber_context *fcp, void (*func)(void *, void *), void *arg0, void *arg1) {
   fcp->entry_point = func;
   fcp->arg0 = arg0;
   fcp->arg1 = arg1;
+  RB_WASM_DEBUG_LOG("[%s] fcp->asyncify_buf %p\n", __func__, &fcp->asyncify_buf);
 }
 
 static rb_wasm_fiber_context *_rb_wasm_active_next_fiber;
@@ -54,9 +60,10 @@ void *rb_wasm_handle_fiber_unwind(void (**new_fiber_entry)(void *, void *),
   *new_fiber_entry = next_fiber->entry_point;
   *arg0 = next_fiber->arg0;
   *arg1 = next_fiber->arg1;
+
   if (!next_fiber->is_started) {
     RB_WASM_DEBUG_LOG("[%s] new fiber started\n", __func__);
-    // start a new fiber if not started yet
+    // start a new fiber if not started yet.
     next_fiber->is_started = true;
     *is_new_fiber_started = true;
     return NULL;
