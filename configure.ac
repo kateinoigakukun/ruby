@@ -3834,6 +3834,7 @@ AS_CASE(["$target_os"],
     [wasi*], [
         FIRSTMAKEFILE=GNUmakefile:wasm/GNUmakefile.in
         AC_LIBOBJ([wasm/missing])
+        AC_LIBOBJ([wasm/runtime])
         AC_LIBOBJ([wasm/fiber])
         AC_LIBOBJ([wasm/machine])
         AC_LIBOBJ([wasm/setjmp])

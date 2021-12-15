@@ -1016,6 +1016,8 @@ wasm/machine.$(OBJEXT): $(srcdir)/wasm/machine.c \
 wasm/setjmp.$(OBJEXT): $(srcdir)/wasm/setjmp.c \
   $(srcdir)/wasm/setjmp.h $(srcdir)/wasm/machine.h \
   $(srcdir)/wasm/asyncify.h $(PLATFORM_D)
+wasm/runtime.$(OBJEXT): $(srcdir)/wasm/runtime.c \
+  $(srcdir)/wasm/machine.h $(srcdir)/wasm/asyncify.h $(srcdir)/wasm/setjmp.h $(PLATFORM_D)
 wasm/machine_core.$(OBJEXT): $(srcdir)/wasm/machine_core.S $(PLATFORM_D)
 	$(Q) $(CC) $(CFLAGS) $(COUTFLAG)$@ -c $(srcdir)/wasm/machine_core.S
 wasm/setjmp_core.$(OBJEXT): $(srcdir)/wasm/setjmp_core.S $(PLATFORM_D)

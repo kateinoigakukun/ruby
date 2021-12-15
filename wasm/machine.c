@@ -17,18 +17,20 @@ void init_asyncify_buf(struct asyncify_buf* buf) {
   buf->end = &buf->buffer[WASM_SCAN_STACK_BUFFER_SIZE];
 }
 
+static void *_rb_wasm_active_scan_buf = NULL;
+
 void rb_wasm_scan_locals(rb_wasm_scan_func scan) {
   static struct asyncify_buf buf;
   static int spilling = 0;
   if (!spilling) {
     spilling = 1;
     init_asyncify_buf(&buf);
-    rb_asyncify_set_active_buf(&buf);
+    _rb_wasm_active_scan_buf = &buf;
     asyncify_start_unwind(&buf);
   } else {
     asyncify_stop_rewind();
     spilling = 0;
-    rb_asyncify_set_active_buf(NULL);
+    _rb_wasm_active_scan_buf = NULL;
     scan(buf.top, buf.end);
   }
 }
@@ -44,10 +46,6 @@ void _rb_wasm_scan_stack(rb_wasm_scan_func scan, void *current) {
   scan(current, rb_wasm_stack_base);
 }
 
-static void *_rb_asyncify_active_buf = NULL;
-void rb_asyncify_set_active_buf(void *buf) {
-  _rb_asyncify_active_buf = buf;
-}
-void *rb_asyncify_get_active_buf(void) {
-  return _rb_asyncify_active_buf;
+void *rb_wasm_handle_scan_unwind(void) {
+  return _rb_wasm_active_scan_buf;
 }

@@ -8,7 +8,7 @@ wasmoptflags = @wasmoptflags@
 
 WASM_TESTRUNNER = wasmtime
 WASM_TESTS = $(wasmdir)/tests/machine_test $(wasmdir)/tests/setjmp_test $(wasmdir)/tests/fiber_test
-WASM_OBJS  = $(wasmdir)/machine_core.o $(wasmdir)/machine.o $(wasmdir)/setjmp.o $(wasmdir)/setjmp_core.o $(wasmdir)/fiber.o
+WASM_OBJS  = $(wasmdir)/machine_core.o $(wasmdir)/machine.o $(wasmdir)/setjmp.o $(wasmdir)/setjmp_core.o $(wasmdir)/fiber.o $(wasmdir)/runtime.o
 
 test-wasm: $(WASM_TESTS)
 	$(foreach x,$(WASM_TESTS), \
