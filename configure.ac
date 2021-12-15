@@ -1930,6 +1930,7 @@ AC_DEFUN([RUBY_REQUIRE_FUNC], [
           [AC_MSG_ERROR($1[() must be supported])])
 ])
 
+# dup and dup2 are always available except for WASI
 AS_CASE(["$target_os"],
     [wasi*], [],
     [
@@ -3725,6 +3726,7 @@ AC_SUBST(INSTALLDOC)
 AC_ARG_ENABLE(jit-support,
         AS_HELP_STRING([--disable-jit-support], [disable JIT features]),
         [MJIT_SUPPORT=$enableval],
+	# Enable mjit by default except for WASI
         [AS_IF([test x"$target_os" != "xwasi"],
 		[MJIT_SUPPORT=yes],
 		[MJIT_SUPPORT=no ])])
