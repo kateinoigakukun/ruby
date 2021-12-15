@@ -41,15 +41,13 @@ static void func2(void *arg0, void *arg1) {
 
 // top level function should not be inlined to stop unwinding immediately after this function returns
 __attribute__((noinline))
-int start() {
-  rb_wasm_init_context(&fctx_main);
+int start(int argc, char **argv) {
+  rb_wasm_init_context(&fctx_main, NULL, NULL, NULL);
   fctx_main.is_started = true;
 
-  rb_wasm_init_context(&fctx_func1);
-  rb_wasm_makecontext(&fctx_func1, func1, 0, 0);
+  rb_wasm_init_context(&fctx_func1, func1, NULL, NULL);
 
-  rb_wasm_init_context(&fctx_func2);
-  rb_wasm_makecontext(&fctx_func2, func2, 0, 0);
+  rb_wasm_init_context(&fctx_func2, func2, NULL, NULL);
 
   counter++;
   fprintf(stderr, "start: swapcontext(&uctx_main, &fctx_func2)\n");
@@ -60,36 +58,9 @@ int start() {
   return 42;
 }
 
-int main(void) {
-  void *buf;
-  bool new_fiber_started;
-  void (*fiber_entry_point)(void *, void *) = NULL;
-  void (*old_entry_point)(void *, void *);
-  void *arg0 = NULL, *arg1 = NULL;
-  int result;
-
-  while (1) {
-    if (fiber_entry_point) {
-      fiber_entry_point(arg0, arg1);
-    } else {
-      result = start();
-    }
-    // NOTE: it's important to call 'asyncify_stop_unwind' here instead in rb_wasm_handle_jmp_unwind
-    // because unless that, Asyncify inserts another unwind check here and it unwinds to the root frame.
-    asyncify_stop_unwind();
-    old_entry_point = fiber_entry_point;
-    buf = rb_wasm_handle_fiber_unwind(&fiber_entry_point, &arg0, &arg1, &new_fiber_started);
-    if (buf) {
-      fprintf(stderr, "asyncify_start_rewind\n");
-      asyncify_start_rewind(buf);
-      continue;
-    } else if (new_fiber_started) {
-      fprintf(stderr, "new_fiber_started\n");
-      continue;
-    }
-    break;
-  }
+int main(int argc, char **argv) {
+  extern int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv);
+  int result = rb_wasm_rt_start(start, argc, argv);
   assert(result == 42);
-  fprintf(stderr, "main: exiting\n");
   return 0;
 }

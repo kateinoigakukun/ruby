@@ -94,7 +94,7 @@ void check_stack_ptr(void) {
 
 // top level function should not be inlined to stop unwinding immediately after this function returns
 __attribute__((noinline))
-int start(void) {
+int start(int argc, char **argv) {
   check_direct();
   check_jump_two_level();
   check_reuse();
@@ -102,23 +102,7 @@ int start(void) {
   return 0;
 }
 
-int main(void) {
-  int result;
-  void *asyncify_buf;
-
-  while (1) {
-    result = start();
-
-    // NOTE: it's important to call 'asyncify_stop_unwind' here instead in rb_wasm_handle_jmp_unwind
-    // because unless that, Asyncify inserts another unwind check here and it unwinds to the root frame.
-    asyncify_stop_unwind();
-
-    if ((asyncify_buf = rb_wasm_handle_jmp_unwind()) != NULL) {
-      asyncify_start_rewind(asyncify_buf);
-      continue;
-    }
-
-    break;
-  }
-  return result;
+int main(int argc, char **argv) {
+  extern int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv);
+  return rb_wasm_rt_start(start, argc, argv);
 }

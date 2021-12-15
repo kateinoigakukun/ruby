@@ -92,7 +92,7 @@ void take_two_args(uint32_t a, uint32_t b) {
 }
 
 __attribute__((noinline))
-int start(void) {
+int start(int argc, char **argv) {
 
   uint32_t deadbeef;
   register uint32_t facefeed;
@@ -109,12 +109,7 @@ int start(void) {
   return 0;
 }
 
-int main(void) {
-  int result = start();
-  while (rb_asyncify_get_active_buf()) {
-    asyncify_stop_unwind();
-    asyncify_start_rewind(rb_asyncify_get_active_buf());
-    result = start();
-  }
-  return result;
+int main(int argc, char **argv) {
+  extern int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv);
+  return rb_wasm_rt_start(start, argc, argv);
 }
