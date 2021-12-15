@@ -17,7 +17,7 @@ jobs:
           - { name: O2,           optflags: "-O2", debugflags: ""  , wasmoptflags: "-O2" }
           - { name: O3,           optflags: "-O3", debugflags: ""  , wasmoptflags: "-O3" }
           # -O4 is equivalent to -O3 in clang, but it's different in wasm-opt
-          - { name: O4,           optflags: "-O4", debugflags: ""  , wasmoptflags: "-O4" }
+          - { name: O4,           optflags: "-O3", debugflags: ""  , wasmoptflags: "-O4" }
           - { name: Oz,           optflags: "-Oz", debugflags: ""  , wasmoptflags: "-Oz" }
       fail-fast: false
     env:
