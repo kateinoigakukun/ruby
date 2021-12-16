@@ -9,24 +9,24 @@
 #endif
 
 struct __rb_wasm_asyncify_jmp_buf {
-  void* top;
-  void* end;
-  char buffer[WASM_SETJMP_STACK_BUFFER_SIZE];
+    void* top;
+    void* end;
+    char buffer[WASM_SETJMP_STACK_BUFFER_SIZE];
 };
 
 typedef struct {
-  // Internal Asyncify buffer space to save execution context
-  struct __rb_wasm_asyncify_jmp_buf setjmp_buf;
-  // Internal Asyncify buffer space used while unwinding from longjmp
-  // but never used for rewinding.
-  struct __rb_wasm_asyncify_jmp_buf longjmp_buf;
-  // Used to save top address of Asyncify stack `setjmp_buf`, which is
-  // overwritten during first rewind.
-  void *dst_buf_top;
-  // A payload value given by longjmp and returned by setjmp for the second time
-  int payload;
-  // Internal state field
-  int state;
+    // Internal Asyncify buffer space to save execution context
+    struct __rb_wasm_asyncify_jmp_buf setjmp_buf;
+    // Internal Asyncify buffer space used while unwinding from longjmp
+    // but never used for rewinding.
+    struct __rb_wasm_asyncify_jmp_buf longjmp_buf;
+    // Used to save top address of Asyncify stack `setjmp_buf`, which is
+    // overwritten during first rewind.
+    void *dst_buf_top;
+    // A payload value given by longjmp and returned by setjmp for the second time
+    int payload;
+    // Internal state field
+    int state;
 } rb_wasm_jmp_buf;
 
 // noinline to avoid breaking Asyncify assumption

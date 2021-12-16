@@ -8,24 +8,24 @@
 #endif
 
 struct __rb_wasm_asyncify_fiber_ctx {
-  void* top;
-  void* end;
-  char buffer[WASM_FIBER_STACK_BUFFER_SIZE];
+    void* top;
+    void* end;
+    char buffer[WASM_FIBER_STACK_BUFFER_SIZE];
 };
 
 // Fiber execution context needed to perform context switch
 typedef struct {
-  // Fiber entry point called when the fiber started for the first time.
-  // NULL if the entry point is main
-  void (*entry_point)(void *, void *);
-  // Opaque argument pointers passed to the entry point function
-  void *arg0, *arg1;
+    // Fiber entry point called when the fiber started for the first time.
+    // NULL if the entry point is main
+    void (*entry_point)(void *, void *);
+    // Opaque argument pointers passed to the entry point function
+    void *arg0, *arg1;
 
-  // Internal asyncify buffer space
-  struct __rb_wasm_asyncify_fiber_ctx asyncify_buf;
+    // Internal asyncify buffer space
+    struct __rb_wasm_asyncify_fiber_ctx asyncify_buf;
 
-  bool is_rewinding;
-  bool is_started;
+    bool is_rewinding;
+    bool is_started;
 } rb_wasm_fiber_context;
 
 // Initialize a given fiber context to be ready to pass to `rb_wasm_swapcontext`
