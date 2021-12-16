@@ -1,3 +1,25 @@
+/*
+ This is a WebAssembly userland setjmp/longjmp implementation based on Binaryen's Asyncify.
+ Inspired by Alon Zakai's snippet released under the MIT License:
+ * https://github.com/kripken/talks/blob/991fb1e4b6d7e4b0ea6b3e462d5643f11d422771/jmp.c
+
+ WebAssembly doesn't have context-switching mechanism for now, so emulate it by Asyncify,
+ which transforms WebAssembly binary to unwind/rewind the execution point and store/restore
+ locals.
+
+ The basic concept of this implementation is:
+ 1. setjmp captures the current execution context by unwinding to the root frame, then immediately
+    rewind to the setjmp call using the captured context. The context is saved in jmp_buf.
+ 2. longjmp unwinds to the root frame and rewinds to a setjmp call re-using a passed jmp_buf.
+
+ This implementation also supports switching context across different call stack (non-standard)
+
+ This approach is good at behavior reproducibility and self-containedness compared to Emscripten's
+ JS exception approach. However this is super expensive because Asyncify inserts many glue code to
+ control execution point in userland.
+
+ This implementation will be replaced with future stack-switching feature.
+ */
 #include <stdint.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -14,29 +36,34 @@
 #endif
 
 enum rb_wasm_jmp_buf_state {
-  JMP_BUF_STATE_UNINITIALIZED = 0,
-  JMP_BUF_STATE_CAPTURING     = 1,
-  JMP_BUF_STATE_CAPTURED      = 2,
-  JMP_BUF_STATE_RETURNING     = 3,
+  // Initial state
+  JMP_BUF_STATE_INITIALIZED = 0,
+  // Unwinding to the root or rewinding to the setjmp call
+  // to capture the current execution context
+  JMP_BUF_STATE_CAPTURING   = 1,
+  // Ready for longjmp
+  JMP_BUF_STATE_CAPTURED    = 2,
+  // Unwinding to the root or rewinding to the setjmp call
+  // to restore the execution context
+  JMP_BUF_STATE_RETURNING   = 3,
 };
-
-#define NOINLINE __attribute__((noinline))
 
 void async_buf_init(struct __rb_wasm_asyncify_jmp_buf* buf) {
   buf->top = &buf->buffer[0];
   buf->end = &buf->buffer[WASM_SETJMP_STACK_BUFFER_SIZE];
 }
 
+// Global unwinding/rewinding jmpbuf state
 static rb_wasm_jmp_buf *_rb_wasm_active_jmpbuf;
 
 __attribute__((noinline))
 int _rb_wasm_setjmp_internal(rb_wasm_jmp_buf *env) {
   RB_WASM_DEBUG_LOG("[%s] env = %p, env->state = %d, _rb_wasm_active_jmpbuf = %p\n", __func__, env, env->state, _rb_wasm_active_jmpbuf);
   switch (env->state) {
-  case JMP_BUF_STATE_UNINITIALIZED: {
-    RB_WASM_DEBUG_LOG("[%s] JMP_BUF_STATE_UNINITIALIZED\n", __func__);
+  case JMP_BUF_STATE_INITIALIZED: {
+    RB_WASM_DEBUG_LOG("[%s] JMP_BUF_STATE_INITIALIZED\n", __func__);
     env->state = JMP_BUF_STATE_CAPTURING;
-    env->val = 0;
+    env->payload = 0;
     _rb_wasm_active_jmpbuf = env;
     async_buf_init(&env->setjmp_buf);
     asyncify_start_unwind(&env->setjmp_buf);
@@ -54,7 +81,7 @@ int _rb_wasm_setjmp_internal(rb_wasm_jmp_buf *env) {
     RB_WASM_DEBUG_LOG("[%s] JMP_BUF_STATE_RETURNING\n", __func__);
     env->state = JMP_BUF_STATE_CAPTURED;
     _rb_wasm_active_jmpbuf = NULL;
-    return env->val;
+    return env->payload;
   }
   default:
     assert(0 && "unexpected state");
@@ -67,7 +94,7 @@ void _rb_wasm_longjmp(rb_wasm_jmp_buf* env, int value) {
   assert(env->state == JMP_BUF_STATE_CAPTURED);
   assert(value != 0);
   env->state = JMP_BUF_STATE_RETURNING;
-  env->val = value;
+  env->payload = value;
   _rb_wasm_active_jmpbuf = env;
   async_buf_init(&env->longjmp_buf);
   asyncify_start_unwind(&env->longjmp_buf);
@@ -82,11 +109,13 @@ void *rb_wasm_handle_jmp_unwind(void) {
   switch (_rb_wasm_active_jmpbuf->state) {
   case JMP_BUF_STATE_CAPTURING: {
     RB_WASM_DEBUG_LOG("[%s] JMP_BUF_STATE_CAPTURING\n", __func__);
+    // save the captured Asyncify stack top
     _rb_wasm_active_jmpbuf->dst_buf_top = _rb_wasm_active_jmpbuf->setjmp_buf.top;
     break;
   }
   case JMP_BUF_STATE_RETURNING: {
     RB_WASM_DEBUG_LOG("[%s] JMP_BUF_STATE_RETURNING\n", __func__);
+    // restore the saved Asyncify stack top
     _rb_wasm_active_jmpbuf->setjmp_buf.top = _rb_wasm_active_jmpbuf->dst_buf_top;
     break;
   }
