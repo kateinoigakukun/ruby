@@ -1,6 +1,6 @@
 #!/bin/sh
-# A fake wasm-opt script to trick clang linker
-# usage: wasm-opt input -o output
+# A fake wasm-opt, which does nothing at all
+# See also: tool/wasm-clangw
 
 set -e
 input=
