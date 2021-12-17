@@ -170,21 +170,19 @@ define_wasi_stub(int umask(int mask), 0)
 define_wasi_stub(int chmod(const char *pathname, int mode), 0)
 define_wasi_stub(int chown(const char *pathname, int owner, int group), 0)
 
-define_wasi_stub(int pclose(FILE *stream), ENOTSUP)
 define_wasi_stub(int pipe(int pipefd[2]), ENOTSUP)
-define_wasi_stub(FILE *popen(const char *command, const char *type), NULL)
 define_wasi_stub(int dup(int oldfd), ENOTSUP)
 define_wasi_stub(int dup2(int oldfd, int newfd), ENOTSUP)
 
 define_wasi_stub(int kill(pid_t pid, int sig), 0)
 define_wasi_stub(void tzset(void),)
 
-define_wasi_stub(int execl(const char *path, const char *arg, ...), 0)
-define_wasi_stub(int execle(const char *path, const char *arg, ...), 0)
-define_wasi_stub(int execv(const char *path, char *const argv[]), 0)
-define_wasi_stub(int execve(const char *filename, char *const argv[], char *const envp[]), 0)
+define_wasi_stub(int execl(const char *path, const char *arg, ...), ENOTSUP)
+define_wasi_stub(int execle(const char *path, const char *arg, ...), ENOTSUP)
+define_wasi_stub(int execv(const char *path, char *const argv[]), ENOTSUP)
+define_wasi_stub(int execve(const char *filename, char *const argv[], char *const envp[]), ENOTSUP)
 define_wasi_stub(int getppid(), 0)
-define_wasi_stub(int system(const char *command), 0)
+define_wasi_stub(int system(const char *command), ENOTSUP)
 
 #endif
 
