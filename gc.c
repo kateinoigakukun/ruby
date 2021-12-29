@@ -28,7 +28,7 @@
 #include <sys/mman.h>
 #endif
 
-#if defined(__wasm__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
 # include "wasm/setjmp.h"
 # include "wasm/machine.h"
 #else
