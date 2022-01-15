@@ -1055,6 +1055,10 @@ do_waitpid(rb_pid_t pid, int *st, int flags)
     return waitpid(pid, st, flags);
 #elif defined HAVE_WAIT4
     return wait4(pid, st, flags, NULL);
+#elif defined __wasi__
+    // WASI doesn't support spawning a process
+    errno = ENOTSUP;
+    return -1;
 #else
 #  error waitpid or wait4 is required.
 #endif
