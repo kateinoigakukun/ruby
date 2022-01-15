@@ -11,6 +11,10 @@
 #include <sys/time.h>
 #endif
 
+#if defined(__wasi__)
+#include "wasm/missing.h"
+#endif
+
 #undef NDEBUG
 #define NDEBUG
 #include <assert.h>
