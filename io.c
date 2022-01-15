@@ -46,6 +46,10 @@
 #include <io.h>
 #endif
 
+#if defined(__wasi__)
+# include "wasm/missing.h"
+#endif
+
 #include <sys/types.h>
 #if defined HAVE_NET_SOCKET_H
 # include <net/socket.h>

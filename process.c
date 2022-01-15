@@ -30,6 +30,10 @@
 # include <unistd.h>
 #endif
 
+#ifdef __wasi__
+# include "wasm/missing.h"
+#endif
+
 #ifdef HAVE_FCNTL_H
 # include <fcntl.h>
 #endif

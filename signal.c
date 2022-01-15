@@ -45,6 +45,10 @@
 #include "vm_core.h"
 #include "ractor_core.h"
 
+#if defined(__wasi__)
+# include "wasm/missing.h"
+#endif
+
 #ifdef NEED_RUBY_ATOMIC_OPS
 rb_atomic_t
 ruby_atomic_exchange(rb_atomic_t *ptr, rb_atomic_t val)

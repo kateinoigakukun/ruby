@@ -152,6 +152,10 @@ int flock(int, int);
 # include <stdlib.h>
 #endif
 
+#if defined(__wasi__)
+# include "wasm/missing.h"
+#endif
+
 #include "dln.h"
 #include "encindex.h"
 #include "id.h"

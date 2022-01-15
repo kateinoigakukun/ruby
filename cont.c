@@ -37,6 +37,10 @@ extern int madvise(caddr_t, size_t, int);
 #include "id_table.h"
 #include "ractor_core.h"
 
+#if defined(__wasi__)
+# include "wasm/missing.h"
+#endif
+
 static const int DEBUG = 0;
 
 #define RB_PAGE_SIZE (pagesize)

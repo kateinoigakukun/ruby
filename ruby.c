@@ -66,6 +66,10 @@
 #include "ruby/version.h"
 #include "ruby/internal/error.h"
 
+#ifdef __wasi__
+# include "wasm/missing.h"
+#endif
+
 #ifndef MAXPATHLEN
 # define MAXPATHLEN 1024
 #endif
