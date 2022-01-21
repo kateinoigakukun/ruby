@@ -4,6 +4,8 @@
 #include "wasm/asyncify.h"
 #include <stdlib.h>
 
+void *rb_asyncify_unwind_buf;
+
 int rb_wasm_rt_start(int (main)(int argc, char **argv), int argc, char **argv) {
   int result;
   void *asyncify_buf;

@@ -56,7 +56,9 @@ async_buf_init(struct __rb_wasm_asyncify_jmp_buf* buf)
 }
 
 // Global unwinding/rewinding jmpbuf state
-static rb_wasm_jmp_buf *_rb_wasm_active_jmpbuf;
+//static 
+rb_wasm_jmp_buf *_rb_wasm_active_jmpbuf;
+extern void *rb_asyncify_unwind_buf;
 
 __attribute__((noinline))
 int

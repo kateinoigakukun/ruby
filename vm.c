@@ -2196,37 +2196,116 @@ static inline VALUE
 vm_exec_handle_exception(rb_execution_context_t *ec, enum ruby_tag_type state,
                          VALUE errinfo, VALUE *initial);
 
+enum rb_vm_exec_middle_phase {
+  PHASE_MAIN   = 0,
+  PHASE_RESCUE = 1,
+};
+
+struct rb_vm_exec_context {
+    VALUE initial;
+    VALUE result;
+    enum ruby_tag_type state;
+    enum rb_vm_exec_middle_phase phase;
+    bool mjit_enable_p;
+};
+
+static void
+vm_exec_enter_vm_loop(rb_execution_context_t * ec, struct rb_vm_exec_context *ctx,
+                      struct rb_vm_tag *_tag, bool skip_first_ex_handle) {
+    if (skip_first_ex_handle) {
+        goto vm_loop_start;
+    }
+
+    ctx->result = ec->errinfo;
+    rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
+    while ((ctx->result = vm_exec_handle_exception(ec, ctx->state, ctx->result, &ctx->initial)) == Qundef) {
+        /* caught a jump, exec the handler */
+        ctx->result = vm_exec_core(ec, ctx->initial);
+    vm_loop_start:
+        VM_ASSERT(ec->tag == _tag);
+        /* when caught `throw`, `tag.state` is set. */
+        if ((ctx->state = _tag->state) == TAG_NONE) break;
+        _tag->state = TAG_NONE;
+    }
+}
+
+__attribute__((noinline))
+void
+vm_exec_bottom_main(rb_execution_context_t *ec, struct rb_vm_exec_context *ctx, struct rb_vm_tag *_tag)
+{
+    ctx->state = TAG_NONE;
+    if (!ctx->mjit_enable_p || (ctx->result = mjit_exec(ec)) == Qundef) {
+        ctx->result = vm_exec_core(ec, ctx->initial);
+    }
+    vm_exec_enter_vm_loop(ec, ctx, _tag, true);
+}
+
+__attribute__((noinline))
+void
+vm_exec_bottom_rescue(rb_execution_context_t *ec, struct rb_vm_exec_context *ctx,
+                      struct rb_vm_tag *_tag, enum ruby_tag_type state)
+{
+    vm_exec_enter_vm_loop(ec, ctx, _tag, false);
+}
+
+#include "wasm/asyncify.h"
+
+__attribute__((noinline))
+void
+vm_exec_middle(rb_execution_context_t *ec, struct rb_vm_exec_context *ctx, struct rb_vm_tag *tag)
+{
+    extern void *rb_asyncify_unwind_buf;
+    extern rb_wasm_jmp_buf *_rb_wasm_active_jmpbuf;
+
+    switch (ctx->phase) {
+    case PHASE_MAIN: {
+        vm_exec_bottom_main(ec, ctx, tag);
+        break;
+    }
+    case PHASE_RESCUE: {
+        vm_exec_bottom_rescue(ec, ctx, tag, ctx->state);
+        break;
+    }
+    }
+
+    do {
+        if (rb_asyncify_unwind_buf && _rb_wasm_active_jmpbuf == &tag->buf) {
+            asyncify_stop_rewind();
+            _rb_wasm_active_jmpbuf = NULL;
+            // reset jmpbuf state
+            tag->buf.state = 2; // JMP_BUF_STATE_CAPTURED
+            ctx->state = rb_ec_tag_state(ec);
+            ctx->phase = PHASE_RESCUE;
+            vm_exec_bottom_rescue(ec, ctx, tag, ctx->state);
+            continue;
+        } else if (rb_asyncify_unwind_buf /* unrelated unwind */) {
+            return;
+        }
+        break;
+    } while (1);
+    return;
+}
+
+__attribute__((noinline))
 VALUE
 vm_exec(rb_execution_context_t *ec, bool mjit_enable_p)
 {
-    enum ruby_tag_type state;
-    VALUE result = Qundef;
-    VALUE initial = 0;
+    struct rb_vm_exec_context ctx = {
+        .initial = 0, .result = Qundef,
+        .phase = PHASE_MAIN,
+        .mjit_enable_p = mjit_enable_p,
+    };
 
     EC_PUSH_TAG(ec);
 
     _tag.retval = Qnil;
-    if ((state = EC_EXEC_TAG()) == TAG_NONE) {
-        if (!mjit_enable_p || (result = mjit_exec(ec)) == Qundef) {
-            result = vm_exec_core(ec, initial);
-        }
-        goto vm_loop_start; /* fallback to the VM */
-    }
-    else {
-	result = ec->errinfo;
-        rb_ec_raised_reset(ec, RAISED_STACKOVERFLOW | RAISED_NOMEMORY);
-        while ((result = vm_exec_handle_exception(ec, state, result, &initial)) == Qundef) {
-            /* caught a jump, exec the handler */
-            result = vm_exec_core(ec, initial);
-	  vm_loop_start:
-	    VM_ASSERT(ec->tag == &_tag);
-	    /* when caught `throw`, `tag.state` is set. */
-	    if ((state = _tag.state) == TAG_NONE) break;
-	    _tag.state = TAG_NONE;
-	}
-    }
+
+    _tag.buf.state = 2; // JMP_BUF_STATE_CAPTURED
+    EC_REPUSH_TAG();
+
+    vm_exec_middle(ec, &ctx, &_tag);
     EC_POP_TAG();
-    return result;
+    return ctx.result;
 }
 
 static inline VALUE
