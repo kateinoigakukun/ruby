@@ -25,7 +25,7 @@ jobs:
           - macos-12
         shared: [enable, disable]
         static-linked-ext: [true, false]
-      fail-fast: true
+      fail-fast: false
     env:
       GITPULLOPTIONS: --no-tags origin ${{github.ref}}
     runs-on: ${{ matrix.os }}
