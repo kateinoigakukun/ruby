@@ -41,15 +41,13 @@ Dir.glob("{ext,.bundle/gems}/*/exts.mk") do |e|
     end
     break if n == "old_extensions"
   end
-  if gem
-    r = ""
-  else
-    r = s[/^all static: (.+)$/, 1]
-    deps << $&
-    rubies |= r.split if r
-    r = "(?:#{Regexp.new(r)})|"
-  end
-  s.scan(%r"^(ext/\S+)/[^/\s:]+:[ \t]*\1/static$|
+
+  r = s[/^all static: (.+)$/, 1]
+  deps << $&
+  rubies |= r.split if r
+  r = "(?:#{Regexp.new(r)})|"
+
+  s.scan(%r"^((?:ext|.bundle/gems)/\S+)/[^/\s:]+:[ \t]*\1/static$|
             ^(?:#{r}
               all|static|install(?:-(?:so|rb))?|
               (?:dist|real)?clean

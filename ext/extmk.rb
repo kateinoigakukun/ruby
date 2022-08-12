@@ -136,7 +136,7 @@ def extract_makefile(makefile, keep = true)
   true
 end
 
-def extmake(target, basedir = 'ext', maybestatic = true)
+def extmake(target, basedir = 'ext')
   FileUtils.mkpath target unless File.directory?(target)
   begin
     # don't build if parent library isn't build
@@ -263,7 +263,7 @@ def extmake(target, basedir = 'ext', maybestatic = true)
     end
     if $static and ok and !$objs.empty? and !noinstall
       args += ["static"]
-      $extlist.push [(maybestatic ? $static : false), target, $target, $preload]
+      $extlist.push [$static, target, $target, $preload]
     end
     FileUtils.rm_f(old_cleanfiles - $distcleanfiles - $cleanfiles)
     FileUtils.rm_f(old_objs - $objs)
@@ -632,7 +632,7 @@ exts.each do |d|
   $static = $force_static ? true : $static_ext[d]
 
   if !$nodynamic or $static
-    result = extmake(d, ext_prefix, !@gemname) or abort
+    result = extmake(d, ext_prefix) or abort
     extso |= $extso
     fails << [d, result] unless result == true
   end
@@ -668,7 +668,7 @@ unless $extlist.empty?
     end
     base = File.basename(feature)
     extinits << feature
-    $extobjs << format("ext/%s/%s.%s", target, base, $LIBEXT)
+    $extobjs << format("%s/%s/%s.%s", @ext_prefix, target, base, $LIBEXT)
     built << target
   end
 

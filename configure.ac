@@ -3283,6 +3283,12 @@ AS_CASE([",$EXTSTATIC,"], [,static,|*,enc,*], [
 AC_SUBST(ENCOBJS)
 AC_SUBST(EXTOBJS)
 
+BUNDLED_GEMS_EXTSTATIC=
+AC_ARG_WITH(static-linked-bundled-gems-ext,
+	    AS_HELP_STRING([--with-static-linked-bundled-gems-ext], [link exts in bundled gems statically]),
+            [AS_CASE([$withval],[yes],[BUNDLED_GEMS_EXTSTATIC=static],[no],[],[BUNDLED_GEMS_EXTSTATIC="$withval"])])
+AC_SUBST(BUNDLED_GEMS_EXTSTATIC)dnl
+
 AC_ARG_WITH(setup,
 	    AS_HELP_STRING([--with-setup=SETUP], [use extension libraries setup]),
 	    [setup=$withval])

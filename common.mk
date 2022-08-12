@@ -287,6 +287,7 @@ EXTS_MK = exts.mk
 $(EXTS_MK): ext/configure-ext.mk $(srcdir)/template/exts.mk.tmpl \
 	    $(TIMESTAMPDIR)/$(arch)/.time $(TIMESTAMPDIR)/.RUBYCOMMONDIR.time
 	$(Q)$(MAKE) -f ext/configure-ext.mk $(mflags) V=$(V) EXTSTATIC=$(EXTSTATIC) \
+		BUNDLED_GEMS_EXTSTATIC=$(BUNDLED_GEMS_EXTSTATIC) \
 		gnumake=$(gnumake) MINIRUBY="$(MINIRUBY)" \
 		EXTLDFLAGS="$(EXTLDFLAGS)" srcdir="$(srcdir)"
 	$(ECHO) generating makefile $@
