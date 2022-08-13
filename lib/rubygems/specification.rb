@@ -2170,6 +2170,7 @@ class Gem::Specification < Gem::BasicSpecification
   def missing_extensions?
     return false if extensions.empty?
     return false if default_gem?
+    return false if static_bundled_gem_extension?
     return false if File.exist? gem_build_complete_path
 
     true

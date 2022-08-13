@@ -91,6 +91,10 @@ class Gem::BasicSpecification
       File.dirname(loaded_from) == Gem.default_specifications_dir
   end
 
+  def static_bundled_gem_extension?
+    RbConfig::CONFIG["BUNDLED_GEMS_EXTSTATIC"] == "static"
+  end
+
   ##
   # Returns full path to the directory where gem's extensions are installed.
 
