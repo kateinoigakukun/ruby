@@ -124,6 +124,11 @@ ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.c.tmpl"
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
   PROPERTIES HEADER_FILE_ONLY true)
 
+ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/call_iseq_optimized.inc.tmpl"
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.c"
+  PROPERTIES HEADER_FILE_ONLY true)
+
 set(insns2vm_rb_outputs
   "${CMAKE_CURRENT_BINARY_DIR}/opt_sc.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/optinsn.inc"
@@ -191,6 +196,7 @@ endforeach()
 
 add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/insns.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
   ${CMAKE_CURRENT_BINARY_DIR}/id.c
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
