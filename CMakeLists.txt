@@ -346,3 +346,6 @@ add_library(ruby-static STATIC
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
 target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
+
+add_subdirectory(coroutine)
+add_dependencies(ruby-static rubyCoroutine)
