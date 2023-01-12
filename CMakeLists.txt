@@ -12,6 +12,7 @@ include(CheckCSourceCompiles)
 include(CheckIncludeFiles)
 include(CheckLinkerFlag)
 include(AutoconfMigration)
+include(RubyOptions)
 
 find_program(DTRACE dtrace)
 find_program(SED sed)
@@ -340,7 +341,7 @@ add_library(ruby-static STATIC
   vm_dump.c
   vm_sync.c
   vm_trace.c
-  yjit.c)
+  $<IF:$<BOOL:RUBY_ENABLE_YJIT>,yjit.c,>)
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
