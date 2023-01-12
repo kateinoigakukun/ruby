@@ -89,12 +89,14 @@ function(add_ruby_dtrace_header target_name src header)
 endfunction()
 
 function(ruby_generate_from_erb template)
-  cmake_parse_arguments(RGFE "" "OUTPUT" "DEPENDS" ${ARGN})
+  cmake_parse_arguments(RGFE "" "OUTPUT" "DEPENDS;OPTIONS;ARGS" ${ARGN})
   add_custom_command(
     OUTPUT "${RGFE_OUTPUT}"
     COMMAND
     ${BASERUBY} "${RUBY_TOOLDIR}/generic_erb.rb"
+      ${RGFE_OPTIONS}
       "--output=${RGFE_OUTPUT}" "${template}"
+      ${RGFE_ARGS}
     DEPENDS
       "${RUBY_TOOLDIR}/generic_erb.rb"
       "${template}"
@@ -144,6 +146,14 @@ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/call_iseq_optimized.inc.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc")
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.c"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
+
+ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/known_errors.inc.tmpl"
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc"
+  OPTIONS "-c"
+  ARGS ${CMAKE_CURRENT_SOURCE_DIR}/defs/known_errors.def
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/defs/known_errors.def)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc"
   PROPERTIES HEADER_FILE_ONLY TRUE)
 
 set(insns2vm_rb_outputs
@@ -227,6 +237,7 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
   ${CMAKE_CURRENT_BINARY_DIR}/id.c
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
+  ${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc
   vm.c
   ruby.c)
 
