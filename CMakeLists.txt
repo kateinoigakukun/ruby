@@ -116,18 +116,18 @@ ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.h.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/id.h"
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/defs/id.def")
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.h"
-  PROPERTIES HEADER_FILE_ONLY true)
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.c.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/id.c"
   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/defs/id.def")
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
-  PROPERTIES HEADER_FILE_ONLY true)
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/call_iseq_optimized.inc.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc")
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.c"
-  PROPERTIES HEADER_FILE_ONLY true)
+  PROPERTIES HEADER_FILE_ONLY TRUE)
 
 set(insns2vm_rb_outputs
   "${CMAKE_CURRENT_BINARY_DIR}/opt_sc.inc"
@@ -191,7 +191,7 @@ add_custom_command(
 )
 foreach(output ${insns2vm_rb_outputs})
   set_source_files_properties("${output}"
-    PROPERTIES HEADER_FILE_ONLY true)
+    PROPERTIES HEADER_FILE_ONLY TRUE)
 endforeach()
 
 add_library(ruby-static STATIC
