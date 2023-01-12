@@ -200,6 +200,7 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
   ${CMAKE_CURRENT_BINARY_DIR}/id.c
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
+  vm.c
   ruby.c)
 
 target_include_directories(ruby-static
