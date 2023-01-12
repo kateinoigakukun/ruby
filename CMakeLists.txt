@@ -102,6 +102,23 @@ function(ruby_generate_from_erb template)
   )
 endfunction()
 
+function(ruby_generate_rbinc rb_source output_out)
+  # strip .rb extension from source file name
+  get_filename_component(name ${rb_source} NAME_WE)
+  set(output "${CMAKE_CURRENT_SOURCE_DIR}/${name}.rbinc")
+  set(${output_out} "${output}" PARENT_SCOPE)
+  add_custom_command(
+    OUTPUT "${output}"
+    COMMAND
+      ${BASERUBY} "${RUBY_TOOLDIR}/mk_builtin_loader.rb" "${rb_source}"
+    DEPENDS
+      "${RUBY_TOOLDIR}/mk_builtin_loader.rb"
+      "${rb_source}"
+  )
+  set_source_files_properties("${output}"
+    PROPERTIES HEADER_FILE_ONLY TRUE)
+endfunction()
+
 set(RUBY_INCLUDE_DIRECTORIES
   .
   ./include
@@ -194,7 +211,17 @@ foreach(output ${insns2vm_rb_outputs})
     PROPERTIES HEADER_FILE_ONLY TRUE)
 endforeach()
 
+set(RBINC_SOURCES
+  array.rb
+  yjit.rb)
+set(rbinc_outputs)
+foreach(source ${RBINC_SOURCES})
+  ruby_generate_rbinc(${CMAKE_SOURCE_DIR}/${source} rbinc_output)
+  list(APPEND rbinc_outputs ${rbinc_output})
+endforeach()
+
 add_library(ruby-static STATIC
+  ${rbinc_outputs}
   ${CMAKE_CURRENT_BINARY_DIR}/insns.inc
   ${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
