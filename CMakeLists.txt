@@ -13,6 +13,7 @@ include(CheckIncludeFiles)
 include(CheckLinkerFlag)
 include(AutoconfMigration)
 include(RubyOptions)
+include(RubyConfigureCoroutine)
 
 find_program(DTRACE dtrace)
 find_program(SED sed)
@@ -263,6 +264,9 @@ add_custom_command(
 set(ARCH_FLAG)
 set(UNIVERSAL_ARCHNAMES)
 
+ruby_configure_coroutine(${RUBY_COROUTINE}
+  coroutine_src coroutine_header)
+
 add_library(ruby-static STATIC
   ${rbinc_outputs}
   ${CMAKE_CURRENT_BINARY_DIR}/insns.inc
@@ -342,11 +346,10 @@ add_library(ruby-static STATIC
   vm_sync.c
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
-  $<IF:$<BOOL:${RUBY_ENABLE_DTRACE}>,probes.c,>)
+  $<IF:$<BOOL:${RUBY_ENABLE_DTRACE}>,probes.c,>
+  ${coroutine_src})
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
 target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
-
-add_subdirectory(coroutine)
-add_dependencies(ruby-static rubyCoroutine)
+target_compile_definitions(ruby-static PUBLIC COROUTINE_H="${coroutine_header}")
