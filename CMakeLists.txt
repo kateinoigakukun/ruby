@@ -271,8 +271,77 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
   ${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc
   ${CMAKE_CURRENT_BINARY_DIR}/node_name.inc
+  array.c
+  ast.c
+  bignum.c
+  class.c
+  compar.c
+  compile.c
+  complex.c
+  cont.c
+  debug.c
+  debug_counter.c
+  dir.c
+  dln_find.c
+  encoding.c
+  enum.c
+  enumerator.c
+  error.c
+  eval.c
+  file.c
+  gc.c
+  hash.c
+  inits.c
+  io.c
+  io_buffer.c
+  iseq.c
+  load.c
+  marshal.c
+  math.c
+  memory_view.c
+  mjit.c
+  mjit_c.c
+  node.c
+  numeric.c
+  object.c
+  pack.c
+  proc.c
+  process.c
+  ractor.c
+  random.c
+  range.c
+  rational.c
+  re.c
+  regcomp.c
+  regenc.c
+  regerror.c
+  regexec.c
+  regparse.c
+  regsyntax.c
+  ruby.c
+  scheduler.c
+  shape.c
+  signal.c
+  sprintf.c
+  st.c
+  strftime.c
+  string.c
+  struct.c
+  symbol.c
+  thread.c
+  time.c
+  transcode.c
+  transient_heap.c
+  util.c
+  variable.c
+  version.c
   vm.c
-  ruby.c)
+  vm_backtrace.c
+  vm_dump.c
+  vm_sync.c
+  vm_trace.c
+  yjit.c)
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
+target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
