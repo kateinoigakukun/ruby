@@ -5,6 +5,8 @@ project(Ruby LANGUAGES C ASM)
 list(APPEND CMAKE_MODULE_PATH
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
+set(RUBY_TOOLDIR ${CMAKE_CURRENT_SOURCE_DIR}/tool)
+
 include(CheckTypeSize)
 include(CheckCSourceCompiles)
 include(CheckIncludeFiles)
@@ -13,6 +15,7 @@ include(AutoconfMigration)
 
 find_program(DTRACE dtrace)
 find_program(SED sed)
+find_program(BASERUBY ruby)
 
 ac_header_stdbool()
 ac_check_headers(time.h)
@@ -85,6 +88,20 @@ function(add_ruby_dtrace_header target_name src header)
   add_custom_target(${target_name} DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${header})
 endfunction()
 
+function(ruby_generate_from_erb template)
+  cmake_parse_arguments(RGFE "" "OUTPUT" "DEPENDS" ${ARGN})
+  add_custom_command(
+    OUTPUT "${RGFE_OUTPUT}"
+    COMMAND
+    ${BASERUBY} "${RUBY_TOOLDIR}/generic_erb.rb"
+      "--output=${RGFE_OUTPUT}" "${template}"
+    DEPENDS
+      "${RUBY_TOOLDIR}/generic_erb.rb"
+      "${template}"
+      ${RGFE_DEPENDS}
+  )
+endfunction()
+
 set(RUBY_INCLUDE_DIRECTORIES
   .
   ./include
@@ -94,7 +111,22 @@ set(RUBY_INCLUDE_DIRECTORIES
 add_ruby_dtrace_header(probes_h ${CMAKE_CURRENT_SOURCE_DIR}/probes.d probes.h)
 set_target_properties(probes_h PROPERTIES
   INCLUDE_DIRECTORIES "${RUBY_INCLUDE_DIRECTORIES}")
+
+ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.h.tmpl"
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/id.h"
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/defs/id.def")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.h"
+  PROPERTIES HEADER_FILE_ONLY true)
+
+ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.c.tmpl"
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/id.c"
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/defs/id.def")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
+  PROPERTIES HEADER_FILE_ONLY true)
+
 add_library(ruby-static STATIC
+  ${CMAKE_CURRENT_BINARY_DIR}/id.h
+  ${CMAKE_CURRENT_BINARY_DIR}/id.c
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
   ruby.c)
 target_include_directories(ruby-static
