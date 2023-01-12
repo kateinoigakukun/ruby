@@ -124,10 +124,77 @@ ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.c.tmpl"
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
   PROPERTIES HEADER_FILE_ONLY true)
 
+set(insns2vm_rb_outputs
+  "${CMAKE_CURRENT_BINARY_DIR}/opt_sc.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/optinsn.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/optunifs.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/insns.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/insns_info.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/vmtc.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/vm.inc"
+  "${CMAKE_CURRENT_BINARY_DIR}/mjit_sp_inc.inc")
+add_custom_command(
+  OUTPUT ${insns2vm_rb_outputs}
+  COMMAND
+    ${BASERUBY} -Ku ${RUBY_TOOLDIR}/insns2vm.rb ${INSNS2VMOPT} ${insns2vm_rb_outputs}
+  DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/insns.def
+    ${CMAKE_CURRENT_SOURCE_DIR}/vm_opts.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/defs/opt_operand.def
+    ${CMAKE_CURRENT_SOURCE_DIR}/defs/opt_insn_unif.def
+    ${RUBY_TOOLDIR}/insns2vm.rb
+    ${RUBY_TOOLDIR}/ruby_vm/controllers/application_controller.rb
+    ${RUBY_TOOLDIR}/ruby_vm/helpers/c_escape.rb
+    ${RUBY_TOOLDIR}/ruby_vm/helpers/dumper.rb
+    ${RUBY_TOOLDIR}/ruby_vm/helpers/scanner.rb
+    ${RUBY_TOOLDIR}/ruby_vm/loaders/insns_def.rb
+    ${RUBY_TOOLDIR}/ruby_vm/loaders/opt_insn_unif_def.rb
+    ${RUBY_TOOLDIR}/ruby_vm/loaders/opt_operand_def.rb
+    ${RUBY_TOOLDIR}/ruby_vm/loaders/vm_opts_h.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/attribute.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/bare_instructions.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/c_expr.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/instructions.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/instructions_unifications.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/operands_unifications.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/trace_instructions.rb
+    ${RUBY_TOOLDIR}/ruby_vm/models/typemap.rb
+    ${RUBY_TOOLDIR}/ruby_vm/scripts/converter.rb
+    ${RUBY_TOOLDIR}/ruby_vm/scripts/insns2vm.rb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_attributes.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_c_expr.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_comptime_insn_stack_increase.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_copyright.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_entry.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_len_info.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_name_info.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_operand_info.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_sp_pc_dependency.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_insn_type_chars.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_leaf_helpers.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_notice.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_sp_inc_helpers.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/_trace_instruction.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/insns.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/insns_info.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/mjit_sp_inc.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/opt_sc.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/optinsn.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/optunifs.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/vm.inc.erb
+    ${RUBY_TOOLDIR}/ruby_vm/views/vmtc.inc.erb
+)
+foreach(output ${insns2vm_rb_outputs})
+  set_source_files_properties("${output}"
+    PROPERTIES HEADER_FILE_ONLY true)
+endforeach()
+
 add_library(ruby-static STATIC
+  ${CMAKE_CURRENT_BINARY_DIR}/insns.inc
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
   ${CMAKE_CURRENT_BINARY_DIR}/id.c
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
   ruby.c)
+
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
