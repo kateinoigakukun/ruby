@@ -221,11 +221,30 @@ foreach(output ${insns2vm_rb_outputs})
     PROPERTIES HEADER_FILE_ONLY TRUE)
 endforeach()
 
-set(RBINC_SOURCES
+set(BUILTIN_RB_SOURCES
   array.rb
+  ast.rb
+  dir.rb
+  gc.rb
+  gem_prelude.rb
+  io.rb
+  kernel.rb
+  marshal.rb
+  mjit.rb
+  mjit_c.rb
+  nilclass.rb
+  numeric.rb
+  pack.rb
+  prelude.rb
+  ractor.rb
+  symbol.rb
+  thread_sync.rb
+  timev.rb
+  trace_point.rb
+  warning.rb
   yjit.rb)
 set(rbinc_outputs)
-foreach(source ${RBINC_SOURCES})
+foreach(source ${BUILTIN_RB_SOURCES})
   ruby_generate_rbinc(${CMAKE_SOURCE_DIR}/${source} rbinc_output)
   list(APPEND rbinc_outputs ${rbinc_output})
 endforeach()
