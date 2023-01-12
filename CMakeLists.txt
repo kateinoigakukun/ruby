@@ -59,5 +59,16 @@ if(HAVE_FDECLSPEC_FLAG)
   add_compile_options("-fdeclspec")
 endif()
 
+# TODO(katei): Generate config.h from config.h.in
+# configure_file(./config.h.in ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h)
+configure_file(./config.h ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h)
+
+set(RUBY_INCLUDE_DIRECTORIES
+  .
+  ./include
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux)
 add_library(ruby-static STATIC
   ruby.c)
+target_include_directories(ruby-static
+  PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
