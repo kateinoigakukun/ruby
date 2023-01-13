@@ -3,7 +3,7 @@ function(ruby_configure_coroutine type src_out header_out)
   set(header "${coroutine_dir}/Context.h")
 
   if(NOT EXISTS ${header})
-    message(FATAL_ERROR "'${type}' is not supported as coroutine")
+    message(FATAL_ERROR "'${type}' is not supported as coroutine because '${header}' does not exist")
   endif()
 
   set(src "${coroutine_dir}/Context.c")
