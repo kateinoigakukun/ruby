@@ -37,7 +37,7 @@ if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   )
   execute_process(
-    COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_CURRENT_BINARY_DIR}/GNUmakefile"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_CURRENT_BINARY_DIR}/GNUmakefile"
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
   )
 endif()
@@ -198,7 +198,7 @@ add_custom_command(
     "${CMAKE_CURRENT_BINARY_DIR}/parse.h"
   COMMAND ${BASERUBY} "${RUBY_TOOLDIR}/id2token.rb" "${CMAKE_CURRENT_SOURCE_DIR}/parse.y" > "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
   COMMAND ${BISON} -d -o "${CMAKE_CURRENT_BINARY_DIR}/y.tab.c" "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
-  COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
+  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
   COMMAND ${SED} -f "${RUBY_TOOLDIR}/ytab.sed" -e "'/^#/s|parse\.tmp\.[iy]|$(SRC_FILE)|'" -e "'/^#/s!y\.tab\.c!$@!'" y.tab.c > parse.c
   COMMAND ${SED} -e "'/^#line.*y\.tab\.h/d;/^#line.*parse.*\.y/d'" y.tab.h > "${CMAKE_CURRENT_BINARY_DIR}/parse.h"
   DEPENDS
