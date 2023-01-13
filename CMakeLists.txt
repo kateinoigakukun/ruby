@@ -30,7 +30,16 @@ ruby_check_lang_features()
 
 # TODO(katei): Generate config.h from config.h.in
 # configure_file(./config.h.in ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h)
-configure_file(./config.h ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h)
+if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h")
+  execute_process(
+    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/configure" "-C"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_CURRENT_BINARY_DIR}/GNUmakefile"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  )
+endif()
 
 set(RUBY_INCLUDE_DIRECTORIES
   .
