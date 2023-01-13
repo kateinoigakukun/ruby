@@ -5,6 +5,7 @@ project(Ruby LANGUAGES C ASM)
 list(APPEND CMAKE_MODULE_PATH
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 
+set(RUBY_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(RUBY_TOOLDIR ${CMAKE_CURRENT_SOURCE_DIR}/tool)
 
 include(CheckTypeSize)
