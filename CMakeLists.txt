@@ -19,6 +19,7 @@ include(RubyBuildCodeGenerator)
 include(RubyDtrace)
 include(RubyFeatureCheck)
 
+find_program(BISON bison)
 find_program(DTRACE dtrace)
 find_program(SED sed)
 find_program(BASERUBY ruby)
@@ -182,6 +183,31 @@ add_custom_command(
 set(ARCH_FLAG)
 set(UNIVERSAL_ARCHNAMES)
 
+add_custom_command(
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/lex.c"
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/lex.c.blt" "${CMAKE_CURRENT_BINARY_DIR}/lex.c"
+  DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/defs/keywords"
+)
+
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/lex.c"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
+
+add_custom_command(
+  OUTPUT
+    "${CMAKE_CURRENT_BINARY_DIR}/parse.c"
+    "${CMAKE_CURRENT_BINARY_DIR}/parse.h"
+  COMMAND ${BASERUBY} "${RUBY_TOOLDIR}/id2token.rb" "${CMAKE_CURRENT_SOURCE_DIR}/parse.y" > "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
+  COMMAND ${BISON} -d -o "${CMAKE_CURRENT_BINARY_DIR}/y.tab.c" "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
+  COMMAND ${CMAKE_COMMAND} -E remove -f "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
+  COMMAND ${SED} -f "${RUBY_TOOLDIR}/ytab.sed" -e "'/^#/s|parse\.tmp\.[iy]|$(SRC_FILE)|'" -e "'/^#/s!y\.tab\.c!$@!'" y.tab.c > parse.c
+  COMMAND ${SED} -e "'/^#line.*y\.tab\.h/d;/^#line.*parse.*\.y/d'" y.tab.h > "${CMAKE_CURRENT_BINARY_DIR}/parse.h"
+  DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/parse.y"
+    "${RUBY_TOOLDIR}/ytab.sed"
+    "${RUBY_TOOLDIR}/id2token.rb"
+    "${CMAKE_CURRENT_BINARY_DIR}/id.h"
+)
+
 ruby_configure_coroutine(${RUBY_COROUTINE}
   coroutine_src coroutine_header)
 
@@ -194,6 +220,8 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/probes.h
   ${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc
   ${CMAKE_CURRENT_BINARY_DIR}/node_name.inc
+  ${CMAKE_CURRENT_BINARY_DIR}/lex.c
+  ${CMAKE_CURRENT_BINARY_DIR}/parse.c
   array.c
   ast.c
   bignum.c
