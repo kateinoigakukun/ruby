@@ -17,7 +17,7 @@ include(CheckFunctionExists)
 include(AutoconfMigration)
 include(RubyOptions)
 include(RubyBuildCodeGenerator)
-include(RubyDtrace)
+include(RubyDTrace)
 include(RubyFeatureCheck)
 
 find_program(BISON bison)
@@ -62,10 +62,6 @@ set(RUBY_INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux
 )
 set(RUBY_COMPILE_DEFINITIONS RUBY_EXPORT)
-
-add_ruby_dtrace_header(probes_h ${CMAKE_CURRENT_SOURCE_DIR}/probes.d probes.h)
-set_target_properties(probes_h PROPERTIES
-  INCLUDE_DIRECTORIES "${RUBY_INCLUDE_DIRECTORIES}")
 
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/id.h.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/id.h"
@@ -236,14 +232,8 @@ add_custom_command(
 add_subdirectory(coroutine)
 add_subdirectory(enc)
 
-set(dtrace_obj)
-add_custom_command(
-  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
-  COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
-  COMMAND
-    "${DTRACE}" -G -C -s "${RUBY_SOURCE_DIR}/probes.d" -o "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
-)
-set(dtrace_obj "${CMAKE_CURRENT_BINARY_DIR}/probes.o")
+add_ruby_dtrace_library(rubyDTrace ${CMAKE_CURRENT_SOURCE_DIR}/probes.d)
+target_include_directories(rubyDTrace PRIVATE ${RUBY_INCLUDE_DIRECTORIES})
 
 add_library(ruby-static STATIC
   ${rbinc_outputs}
@@ -251,7 +241,6 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc
   ${CMAKE_CURRENT_BINARY_DIR}/id.h
   ${CMAKE_CURRENT_BINARY_DIR}/id.c
-  ${CMAKE_CURRENT_BINARY_DIR}/probes.h
   ${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc
   ${CMAKE_CURRENT_BINARY_DIR}/node_name.inc
   ${CMAKE_CURRENT_BINARY_DIR}/lex.c
@@ -327,13 +316,12 @@ add_library(ruby-static STATIC
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
   ${missing_srcs}
-  ${dtrace_obj}
 )
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
 target_compile_definitions(ruby-static PUBLIC ${RUBY_COMPILE_DEFINITIONS})
-target_link_libraries(ruby-static PRIVATE rubyCoroutine rubyEncoding)
+target_link_libraries(ruby-static PRIVATE rubyCoroutine rubyEncoding rubyDTrace)
 
 add_executable(miniruby
   main.c
