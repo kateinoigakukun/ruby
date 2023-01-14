@@ -101,3 +101,6 @@ add_custom_target(unicode-up-name2ctype_h
 add_custom_target(unicode-up)
 add_dependencies(unicode-up
   unicode-up-casefold_h unicode-up-name2ctype_h)
+
+add_library(rubyEncodingUnicode INTERFACE)
+target_include_directories(rubyEncodingUnicode INTERFACE "${UNICODE_HDR_DIR}")

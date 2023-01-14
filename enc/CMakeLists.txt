@@ -23,4 +23,4 @@ add_library(rubyEncoding OBJECT
 )
 target_compile_definitions(rubyEncoding PRIVATE ${RUBY_COMPILE_DEFINITIONS})
 target_include_directories(rubyEncoding PRIVATE ${RUBY_INCLUDE_DIRECTORIES})
-target_include_directories(rubyEncoding PUBLIC "${UNICODE_HDR_DIR}")
+target_link_libraries(rubyEncoding PUBLIC rubyEncodingUnicode)
