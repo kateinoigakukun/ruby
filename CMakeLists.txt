@@ -189,6 +189,14 @@ foreach(source ${BUILTIN_RB_SOURCES})
   list(APPEND rbinc_outputs ${rbinc_output})
 endforeach()
 
+ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/prelude.c.tmpl"
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/miniprelude.c"
+  OPTIONS "-I${CMAKE_CURRENT_SOURCE_DIR}"
+  ARGS ${BUILTIN_RB_SOURCES}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/defs/known_errors.def)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/miniprelude.c"
+  PROPERTIES HEADER_FILE_ONLY TRUE)
+
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/node_name.inc
   COMMAND
@@ -352,3 +360,16 @@ target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
 target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
 target_link_libraries(ruby-static PRIVATE rubyCoroutine)
+
+add_executable(miniruby
+  main.c
+  ${CMAKE_CURRENT_BINARY_DIR}/miniprelude.c
+  dmydln.c
+  miniinit.c
+  dmyext.c
+  # TODO(katei): add conditional support
+  addr2line.c
+)
+target_link_libraries(miniruby PRIVATE ruby-static)
+# TODO(katei): Exlucde those dependency when unnecessary
+target_link_libraries(miniruby PRIVATE m dl pthread rt z crypt)
