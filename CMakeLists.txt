@@ -51,6 +51,7 @@ if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config
   )
 endif()
 
+ac_load_cache_file()
 
 # TODO(katei): guess platform symbol prefix
 set(SYMBOL_PREFIX)

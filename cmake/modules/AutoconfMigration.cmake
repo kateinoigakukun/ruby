@@ -26,6 +26,24 @@ macro(ac_header_stdbool)
   check_type_size(_Bool HAVE__BOOL)
 endmacro()
 
+macro(ac_load_cache_file)
+  # Read config.cache and extract all entries
+  message(STATUS "Loading config.cache:")
+  file(STRINGS ${CMAKE_CURRENT_BINARY_DIR}/config.cache config_cache)
+  foreach(line ${config_cache})
+    # Parse autoconf cache entry: e.g. ac_cv_build=${ac_cv_build=x86_64-pc-linux-gnu}
+    if(line MATCHES "^(.+)=\\$\\{(.+)\\}$")
+      set(var ${CMAKE_MATCH_1})
+      set(value ${CMAKE_MATCH_2})
+      if(value MATCHES "^${var}=(.*)$")
+        set(value ${CMAKE_MATCH_1})
+      endif()
+      set(${var} ${value} CACHE INTERNAL "")
+      message(STATUS "  ${var}=${value}")
+    endif()
+  endforeach()
+endmacro()
+
 macro(ruby_check_c_decl_attribute _ATTRIBUTE _RESULT)
   check_c_source_compiles("${_ATTRIBUTE} int conftest_func() { return 0; }
     int main() { return conftest_func(); }" ${_RESULT}
