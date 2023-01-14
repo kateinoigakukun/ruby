@@ -235,6 +235,15 @@ add_library(rubyCoroutine OBJECT
   ${coroutine_src})
 target_compile_definitions(rubyCoroutine PRIVATE "SYMBOL_PREFIX=${SYMBOL_PREFIX}")
 
+set(dtrace_obj)
+add_custom_command(
+  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
+  COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
+  COMMAND
+    "${DTRACE}" -G -C -s "${RUBY_SOURCE_DIR}/probes.d" -o "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
+)
+set(dtrace_obj "${CMAKE_CURRENT_BINARY_DIR}/probes.o")
+
 add_custom_command(
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/enc/trans/newline.c"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/enc/trans"
@@ -334,9 +343,9 @@ add_library(ruby-static STATIC
   vm_sync.c
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
-  $<IF:$<BOOL:${RUBY_ENABLE_DTRACE}>,probes.c,>
   ${RUBY_BUILTIN_ENCS}
   ${missing_srcs}
+  ${dtrace_obj}
 )
 
 target_include_directories(ruby-static
