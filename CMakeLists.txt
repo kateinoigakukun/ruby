@@ -15,7 +15,6 @@ include(CheckLinkerFlag)
 include(CheckFunctionExists)
 include(AutoconfMigration)
 include(RubyOptions)
-include(RubyConfigureCoroutine)
 include(RubyBuildCodeGenerator)
 include(RubyDtrace)
 include(RubyFeatureCheck)
@@ -238,12 +237,7 @@ add_custom_command(
     "${CMAKE_CURRENT_BINARY_DIR}/id.h"
 )
 
-ruby_configure_coroutine(${RUBY_COROUTINE}
-  coroutine_src coroutine_header)
-add_library(rubyCoroutine OBJECT
-  ${coroutine_src})
-target_compile_definitions(rubyCoroutine PRIVATE "SYMBOL_PREFIX=${SYMBOL_PREFIX}")
-
+add_subdirectory(coroutine)
 add_subdirectory(enc)
 
 set(dtrace_obj)
