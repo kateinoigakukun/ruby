@@ -42,6 +42,10 @@ if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config
   )
 endif()
 
+
+# TODO(katei): guess platform symbol prefix
+set(SYMBOL_PREFIX)
+
 set(RUBY_INCLUDE_DIRECTORIES
   .
   ./include
@@ -210,6 +214,9 @@ add_custom_command(
 
 ruby_configure_coroutine(${RUBY_COROUTINE}
   coroutine_src coroutine_header)
+add_library(rubyCoroutine OBJECT
+  ${coroutine_src})
+target_compile_definitions(rubyCoroutine PRIVATE "SYMBOL_PREFIX=${SYMBOL_PREFIX}")
 
 add_library(ruby-static STATIC
   ${rbinc_outputs}
@@ -293,9 +300,9 @@ add_library(ruby-static STATIC
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
   $<IF:$<BOOL:${RUBY_ENABLE_DTRACE}>,probes.c,>
-  ${coroutine_src})
+)
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
 target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
-target_compile_definitions(ruby-static PUBLIC COROUTINE_H="${coroutine_header}")
+target_link_libraries(ruby-static PRIVATE rubyCoroutine)
