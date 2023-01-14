@@ -4,6 +4,8 @@ set(RUBY_BUILTIN_ENCS
   unicode.c
   utf_8.c)
 
+add_subdirectory(unicode)
+
 add_custom_command(
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/trans/newline.c"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/trans"
@@ -21,3 +23,4 @@ add_library(rubyEncoding OBJECT
 )
 target_compile_definitions(rubyEncoding PRIVATE ${RUBY_COMPILE_DEFINITIONS})
 target_include_directories(rubyEncoding PRIVATE ${RUBY_INCLUDE_DIRECTORIES})
+target_include_directories(rubyEncoding PUBLIC "${UNICODE_HDR_DIR}")

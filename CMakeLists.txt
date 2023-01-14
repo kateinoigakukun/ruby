@@ -7,6 +7,7 @@ list(APPEND CMAKE_MODULE_PATH
 
 set(RUBY_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 set(RUBY_TOOLDIR ${CMAKE_CURRENT_SOURCE_DIR}/tool)
+set(RUBY_DOWNLOAD_CACHE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/.downloaded-cache)
 
 include(CheckTypeSize)
 include(CheckCSourceCompiles)
@@ -23,6 +24,14 @@ find_program(BISON bison)
 find_program(DTRACE dtrace)
 find_program(SED sed)
 find_program(BASERUBY ruby)
+if(NOT BASERUBY MATCHES "BASERUBY-NOTFOUND")
+  set(BOOTSTRAPRUBY "${BASERUBY}")
+else()
+  # NOTE: Use of BOOTSTRAPRUBY in add_custom_command or add_custom_target
+  # will add miniruby to its dependencies implicitly due to the generator-expression
+  set(BOOTSTRAPRUBY "$<TARGET_FILE:miniruby>")
+endif()
+message(STATUS "BOOTSTRAPRUBY: ${BOOTSTRAPRUBY}")
 
 ruby_check_headers()
 ruby_check_types()
@@ -43,18 +52,6 @@ if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config
 endif()
 
 
-# TODO(katei): add missing dependencies
-set(UNICODE_VERSION "15.0.0")
-set(UNICODE_HDR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/enc/unicode/${UNICODE_VERSION}")
-set(UNICODE_SRC_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/enc/unicode/data/${UNICODE_VERSION}/ucd")
-add_custom_command(
-  OUTPUT "${UNICODE_HDR_DIR}/casefold.h"
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${UNICODE_HDR_DIR}"
-  COMMAND "${BASERUBY}" "${RUBY_TOOLDIR}/enc-case-folding.rb"
-    "--output-file=${UNICODE_HDR_DIR}/casefold.h"
-    "--mapping-data-directory=${UNICODE_SRC_DATA_DIR}"
-)
-
 # TODO(katei): guess platform symbol prefix
 set(SYMBOL_PREFIX)
 
@@ -63,7 +60,6 @@ set(RUBY_INCLUDE_DIRECTORIES
   ${CMAKE_SOURCE_DIR}/include
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux
-  "${UNICODE_HDR_DIR}"
 )
 set(RUBY_COMPILE_DEFINITIONS RUBY_EXPORT)
 
