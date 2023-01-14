@@ -60,12 +60,13 @@ add_custom_command(
 set(SYMBOL_PREFIX)
 
 set(RUBY_INCLUDE_DIRECTORIES
-  .
-  ./include
+  ${CMAKE_SOURCE_DIR}/
+  ${CMAKE_SOURCE_DIR}/include
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux
   "${UNICODE_HDR_DIR}"
 )
+set(RUBY_COMPILE_DEFINITIONS RUBY_EXPORT)
 
 add_ruby_dtrace_header(probes_h ${CMAKE_CURRENT_SOURCE_DIR}/probes.d probes.h)
 set_target_properties(probes_h PROPERTIES
@@ -243,6 +244,8 @@ add_library(rubyCoroutine OBJECT
   ${coroutine_src})
 target_compile_definitions(rubyCoroutine PRIVATE "SYMBOL_PREFIX=${SYMBOL_PREFIX}")
 
+add_subdirectory(enc)
+
 set(dtrace_obj)
 add_custom_command(
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
@@ -251,23 +254,6 @@ add_custom_command(
     "${DTRACE}" -G -C -s "${RUBY_SOURCE_DIR}/probes.d" -o "${CMAKE_CURRENT_BINARY_DIR}/probes.o"
 )
 set(dtrace_obj "${CMAKE_CURRENT_BINARY_DIR}/probes.o")
-
-add_custom_command(
-  OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/enc/trans/newline.c"
-  COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/enc/trans"
-  COMMAND "${BASERUBY}" "${RUBY_TOOLDIR}/transcode-tblgen.rb" -vo
-    "${CMAKE_CURRENT_BINARY_DIR}/enc/trans/newline.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/enc/trans/newline.trans"
-  DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/enc/trans/newline.trans"
-    "${RUBY_TOOLDIR}/transcode-tblgen.rb"
-)
-
-set(RUBY_BUILTIN_ENCS
-  enc/ascii.c
-  enc/us_ascii.c
-  enc/unicode.c
-  enc/utf_8.c)
 
 add_library(ruby-static STATIC
   ${rbinc_outputs}
@@ -280,7 +266,6 @@ add_library(ruby-static STATIC
   ${CMAKE_CURRENT_BINARY_DIR}/node_name.inc
   ${CMAKE_CURRENT_BINARY_DIR}/lex.c
   ${CMAKE_CURRENT_BINARY_DIR}/parse.c
-  ${CMAKE_CURRENT_BINARY_DIR}/enc/trans/newline.c
   array.c
   ast.c
   bignum.c
@@ -351,15 +336,14 @@ add_library(ruby-static STATIC
   vm_sync.c
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
-  ${RUBY_BUILTIN_ENCS}
   ${missing_srcs}
   ${dtrace_obj}
 )
 
 target_include_directories(ruby-static
   PUBLIC ${RUBY_INCLUDE_DIRECTORIES})
-target_compile_definitions(ruby-static PUBLIC RUBY_EXPORT)
-target_link_libraries(ruby-static PRIVATE rubyCoroutine)
+target_compile_definitions(ruby-static PUBLIC ${RUBY_COMPILE_DEFINITIONS})
+target_link_libraries(ruby-static PRIVATE rubyCoroutine rubyEncoding)
 
 add_executable(miniruby
   main.c
