@@ -12,6 +12,7 @@ include(CheckTypeSize)
 include(CheckCSourceCompiles)
 include(CheckIncludeFiles)
 include(CheckLinkerFlag)
+include(CheckFunctionExists)
 include(AutoconfMigration)
 include(RubyOptions)
 include(RubyConfigureCoroutine)
@@ -27,7 +28,7 @@ find_program(BASERUBY ruby)
 ruby_check_headers()
 ruby_check_types()
 ruby_check_lang_features()
-
+ruby_check_funcs(missing_srcs)
 
 # TODO(katei): Generate config.h from config.h.in
 # configure_file(./config.h.in ${CMAKE_CURRENT_BINARY_DIR}/.ext/include/x86_64-linux/ruby/config.h)
@@ -300,6 +301,7 @@ add_library(ruby-static STATIC
   vm_trace.c
   $<IF:$<BOOL:${RUBY_ENABLE_YJIT}>,yjit.c,>
   $<IF:$<BOOL:${RUBY_ENABLE_DTRACE}>,probes.c,>
+  ${missing_srcs}
 )
 
 target_include_directories(ruby-static
