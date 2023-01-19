@@ -78,7 +78,7 @@ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/id.c"
 
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/call_iseq_optimized.inc.tmpl"
   OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc")
-set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.c"
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/vm_call_iseq_optimized.inc"
   PROPERTIES HEADER_FILE_ONLY TRUE)
 
 ruby_generate_from_erb("${CMAKE_CURRENT_SOURCE_DIR}/template/known_errors.inc.tmpl"
