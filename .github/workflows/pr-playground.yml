@@ -29,15 +29,8 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            console.log(JSON.stringify(context, null, 2));
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-            });
-
             const buildWorkflowPath = '.github/workflows/wasm.yml';
-            const findSuuceessfulBuildRun = async () => {
+            const findSuccessfuBuildRun = async () => {
               const opts = github.rest.actions.listWorkflowRunsForRepo.endpoint.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -49,42 +42,53 @@ jobs:
               return buildRun;
             }
 
-            core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
-            const buildRun = await findSuuceessfulBuildRun();
-            if (!buildRun) {
-              core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
-              return;
-            }
-            core.info(`Found a successful build run: ${buildRun.html_url}`);
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const runLink = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const magicComment = `<!-- AUTO-GENERATED-COMMENT-PR-PLAYGROUND -->`;
-            const comment = `${magicComment}
-            **Try on Playground**: https://ruby.github.io/play-ruby?run=${process.env.GITHUB_RUN_ID}
-            This is an automated comment by [\`pr-playground.yml\`](${runLink}) workflow.
-            `;
-            core.info(`Comment: ${comment}`);
-
-            const existingComment = comments.find(comment => comment.body.startsWith(magicComment));
-            if (existingComment) {
-              core.info(`Updating existing comment: ${existingComment.html_url}`);
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: comment,
-              });
-            } else {
-              await github.rest.issues.createComment({
+            const postComment = async (body) => {
+              const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: comment,
               });
+
+              const commentOpts = { owner: context.repo.owner, repo: context.repo.repo, body: comment };
+
+              const existingComment = comments.find(comment => comment.body.startsWith(magicComment));
+              if (existingComment) {
+                core.info(`Updating existing comment: ${existingComment.html_url}`);
+                await github.rest.issues.updateComment({
+                  ...commentOpts, comment_id: existingComment.id
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  ...commentOpts, issue_number: context.issue.number
+                });
+              }
             }
+
+            const prNumbers = context.payload.pull_request ?
+                [context.payload.pull_request.number] :
+                context.payload.workflow_run.pull_requests.map(pr => pr.number);
+
+            for (const prNumber of prNumbers) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              });
+
+              core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
+              const buildRun = await findSuccessfuBuildRun();
+              if (!buildRun) {
+                core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
+                return;
+              }
+              core.info(`Found a successful build run: ${buildRun.html_url}`);
+
+              const runLink = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+              const magicComment = `<!-- AUTO-GENERATED-COMMENT-PR-PLAYGROUND -->`;
+              const comment = `${magicComment}
+              **Try on Playground**: https://ruby.github.io/play-ruby?run=${buildRun.id}
+              This is an automated comment by [\`pr-playground.yml\`](${runLink}) workflow.
+              `;
+              core.info(`Comment: ${comment}`);
+            }
+
