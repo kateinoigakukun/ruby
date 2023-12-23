@@ -93,5 +93,6 @@ jobs:
               This is an automated comment by [\`pr-playground.yml\`](${runLink}) workflow.
               `;
               core.info(`Comment: ${comment}`);
+              await postComment(comment);
             }
 
