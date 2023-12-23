@@ -31,7 +31,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const buildWorkflowPath = '.github/workflows/wasm.yml';
-            const findSuccessfuBuildRun = async () => {
+            const findSuccessfuBuildRun = async (pr) => {
               const opts = github.rest.actions.listWorkflowRunsForRepo.endpoint.merge({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -79,7 +79,7 @@ jobs:
               });
 
               core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
-              const buildRun = await findSuccessfuBuildRun();
+              const buildRun = await findSuccessfuBuildRun(pr);
               if (!buildRun) {
                 core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
                 return;
