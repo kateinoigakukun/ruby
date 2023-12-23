@@ -1,0 +1,83 @@
+name: Post Playground link to PR
+on:
+  pull_request:
+    types: [labeled]
+  workflow_call:
+
+jobs:
+  post-summary:
+    name: Post Playground link
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    # Post a comment only if the PR status check is passed and the PR is labeled with `Playground`.
+    # Triggered twice: when the PR is labeled and when PR build is passed.
+    if: >-
+      ${{ true
+      && github.repository == 'ruby/ruby'
+      && github.event_name == 'pull_request'
+      && contains(github.event.pull_request.labels.*.name, 'Playground')
+      }}
+    steps:
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const buildWorkflowPath = '.github/workflows/wasm.yml';
+            const findSuuceessfulBuildRun = async () => {
+              const opts = github.rest.actions.listWorkflowRunsForRepo.endpoint.merge({
+                owner: pr.head.repo.owner.login,
+                repo: pr.head.repo.name,
+                status: 'success',
+                branch: pr.head.ref,
+              });
+              const runs = await github.paginate(opts);
+              const buildRun = runs.find(run => run.path == buildWorkflowPath);
+              return buildRun;
+            }
+
+            core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
+            const buildRun = await findSuuceessfulBuildRun();
+            if (!buildRun) {
+              core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
+              return;
+            }
+            core.info(`Found a successful build run: ${buildRun.html_url}`);
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const runLink = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const magicComment = `<!-- AUTO-GENERATED-COMMENT-PR-PLAYGROUND -->`;
+            const comment = `${magicComment}
+            **Try on Playground**: https://ruby.github.io/play-ruby?run=${process.env.GITHUB_RUN_ID}
+            This is an automated comment by [\`pr-playground.yml\`](${runLink}) workflow.
+            `;
+            core.info(`Comment: ${comment}`);
+
+            const existingComment = comments.find(comment => comment.body.startsWith(magicComment));
+            if (existingComment) {
+              core.info(`Updating existing comment: ${existingComment.html_url}`);
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment,
+              });
+            }
