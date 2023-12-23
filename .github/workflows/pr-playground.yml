@@ -29,6 +29,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            console.log(JSON.stringify(context, null, 2));
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -48,16 +49,13 @@ jobs:
               return buildRun;
             }
 
-            const needsBuildCheck = context.payload.action == 'labeled';
-            if (needsBuildCheck) {
-              core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
-              const buildRun = await findSuuceessfulBuildRun();
-              if (!buildRun) {
-                core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
-                return;
-              }
-              core.info(`Found a successful build run: ${buildRun.html_url}`);
+            core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
+            const buildRun = await findSuuceessfulBuildRun();
+            if (!buildRun) {
+              core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
+              return;
             }
+            core.info(`Found a successful build run: ${buildRun.html_url}`);
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
