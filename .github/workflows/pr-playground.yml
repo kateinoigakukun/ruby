@@ -68,6 +68,8 @@ jobs:
                 [context.payload.pull_request.number] :
                 context.payload.workflow_run.pull_requests.map(pr => pr.number);
 
+            console.log(JSON.stringify(context.payload, null, 2));
+            console.log(`PR numbers: ${prNumbers}`);
             for (const prNumber of prNumbers) {
               const { data: pr } = await github.rest.pulls.get({
                 owner: context.repo.owner,
