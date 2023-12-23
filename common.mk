@@ -3,6 +3,7 @@
 # Avoid features specific to GNU Make.
 #
 #
+#
 
 bin: $(PROGRAM) $(WPROGRAM)
 lib: $(LIBRUBY)
