@@ -45,11 +45,11 @@ jobs:
               return buildRun;
             }
 
-            const postComment = async (body) => {
+            const postComment = async (body, pr) => {
               const { data: comments } = await github.rest.issues.listComments({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: pr.number,
               });
 
               const commentOpts = { owner: context.repo.owner, repo: context.repo.repo, body: comment };
@@ -62,7 +62,7 @@ jobs:
                 });
               } else {
                 await github.rest.issues.createComment({
-                  ...commentOpts, issue_number: context.issue.number
+                  ...commentOpts, issue_number: pr.number
                 });
               }
             }
@@ -121,5 +121,5 @@ jobs:
             This is an automated comment by [\`pr-playground.yml\`](${runLink}) workflow.
             `;
             core.info(`Comment: ${comment}`);
-            await postComment(comment);
+            await postComment(comment, pr);
 
