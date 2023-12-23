@@ -49,8 +49,8 @@ jobs:
                 core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
                 return;
               }
+              core.info(`Found a successful build run: ${buildRun.html_url}`);
             }
-            core.info(`Found a successful build run: ${buildRun.html_url}`);
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
