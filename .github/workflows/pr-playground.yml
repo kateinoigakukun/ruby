@@ -41,7 +41,7 @@ jobs:
               return buildRun;
             }
 
-            const needsBuildCheck = context.event.action == 'labeled'
+            const needsBuildCheck = context.payload.action == 'labeled';
             if (needsBuildCheck) {
               core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
               const buildRun = await findSuuceessfulBuildRun();
