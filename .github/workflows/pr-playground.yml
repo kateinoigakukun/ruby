@@ -22,7 +22,7 @@ jobs:
       || (true
         && github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.pull_requests != '[]'
+        && toJSON(github.event.workflow_run.pull_requests) != '[]'
       )
       }}
     steps:
