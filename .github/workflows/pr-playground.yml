@@ -22,6 +22,7 @@ jobs:
       || (true
         && github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.pull_requests != '[]'
       )
       }}
     steps:
@@ -74,7 +75,7 @@ jobs:
               const { data: pr } = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                pull_number: context.issue.number,
+                pull_number: prNumber,
               });
 
               core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
