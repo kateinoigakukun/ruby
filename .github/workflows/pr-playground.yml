@@ -22,10 +22,12 @@ jobs:
       || (true
         && github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success'
-        && toJSON(github.event.workflow_run.pull_requests) != '[]'
       )
       }}
     steps:
+      - run: |
+          echo ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          echo ${{ toJSON(github.event) }}
       - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
