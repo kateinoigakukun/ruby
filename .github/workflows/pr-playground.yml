@@ -31,8 +31,8 @@ jobs:
             const buildWorkflowPath = '.github/workflows/wasm.yml';
             const findSuuceessfulBuildRun = async () => {
               const opts = github.rest.actions.listWorkflowRunsForRepo.endpoint.merge({
-                owner: pr.head.repo.owner.login,
-                repo: pr.head.repo.name,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
                 status: 'success',
                 branch: pr.head.ref,
               });
@@ -41,11 +41,14 @@ jobs:
               return buildRun;
             }
 
-            core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
-            const buildRun = await findSuuceessfulBuildRun();
-            if (!buildRun) {
-              core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
-              return;
+            const needsBuildCheck = context.event.action == 'labeled'
+            if (needsBuildCheck) {
+              core.info(`Checking if the build is successful for ${pr.head.ref} in ${pr.head.repo.owner.login}/${pr.head.repo.name}...`);
+              const buildRun = await findSuuceessfulBuildRun();
+              if (!buildRun) {
+                core.info(`No successful build run found for ${buildWorkflowPath} on ${pr.head.ref} yet.`);
+                return;
+              }
             }
             core.info(`Found a successful build run: ${buildRun.html_url}`);
 
