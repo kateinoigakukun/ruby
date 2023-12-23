@@ -156,12 +156,6 @@ jobs:
           label: ${{ matrix.entry.name }}
           SLACK_WEBHOOK_URL: ${{ secrets.SIMPLER_ALERTS_URL }} # ruby-lang slack: ruby/simpler-alerts-bot
         if: ${{ failure() }}
-  post-playground-link:
-    needs: [make]
-    if: ${{ github.event_name == 'pull_request' }}
-    permissions:
-      pull-requests: write
-    uses: ./.github/workflows/pr-playground.yml
 
 # defaults:
 #   run:
