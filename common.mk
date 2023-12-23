@@ -1,6 +1,7 @@
 # -*- mode: makefile-gmake; indent-tabs-mode: t -*-
 # This fragment can be used with nmake.exe and with bsdmake.
 # Avoid features specific to GNU Make.
+#
 
 bin: $(PROGRAM) $(WPROGRAM)
 lib: $(LIBRUBY)
