@@ -4,6 +4,7 @@ on:
     types: [labeled]
   workflow_run:
     workflows: ["WebAssembly"]
+    types: [completed]
 
 jobs:
   post-summary:
@@ -15,9 +16,13 @@ jobs:
     # Triggered twice: when the PR is labeled and when PR build is passed.
     if: >-
       ${{ false
-      || (github.event_name == 'pull_request_target' 
-          && contains(github.event.pull_request.labels.*.name, 'Playground'))
-      || (github.event_name == 'workflow_run'
+      || (true
+        && github.event_name == 'pull_request_target' 
+        && contains(github.event.pull_request.labels.*.name, 'Playground'))
+      || (true
+        && github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+      )
       }}
     steps:
       - run: echo ${{ toJSON(github) }}
