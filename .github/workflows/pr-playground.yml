@@ -22,6 +22,7 @@ jobs:
       || (true
         && github.event_name == 'workflow_run'
         && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'pull_request'
       )
       }}
     steps:
@@ -91,7 +92,7 @@ jobs:
                 archive_format: 'zip',
               });
 
-              await fs.writeFile('pr-info.zip', data);
+              await fs.writeFile('pr-info.zip', Buffer.from(data));
               await exec.exec('unzip', ['pr-info.zip']);
               return await fs.readFile('github-pr-info.txt', 'utf8');
             }
