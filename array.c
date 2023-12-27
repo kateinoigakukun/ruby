@@ -8724,3 +8724,4 @@ Init_Array(void)
 }
 
 #include "array.rbinc"
+
