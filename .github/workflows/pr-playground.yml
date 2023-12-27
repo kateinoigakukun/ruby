@@ -73,13 +73,11 @@ jobs:
               }
               // Workaround for https://github.com/orgs/community/discussions/25220
 
-              console.log(JSON.stringify(context.payload, null, 2));
               const { data: { artifacts } } = await github.rest.actions.listWorkflowRunArtifacts({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 run_id: context.payload.workflow_run.id,
               });
-              console.log(JSON.stringify(artifacts, null, 2));
               const artifact = artifacts.find(artifact => artifact.name == 'github-pr-info');
               if (!artifact) {
                 throw new Error('Cannot find github-pr-info.txt artifact');
