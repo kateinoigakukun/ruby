@@ -90,14 +90,12 @@ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/known_errors.inc"
   PROPERTIES HEADER_FILE_ONLY TRUE)
 
 set(insns2vm_rb_outputs
-  "${CMAKE_CURRENT_BINARY_DIR}/opt_sc.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/optinsn.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/optunifs.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/insns.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/insns_info.inc"
   "${CMAKE_CURRENT_BINARY_DIR}/vmtc.inc"
-  "${CMAKE_CURRENT_BINARY_DIR}/vm.inc"
-  "${CMAKE_CURRENT_BINARY_DIR}/mjit_sp_inc.inc")
+  "${CMAKE_CURRENT_BINARY_DIR}/vm.inc")
 add_custom_command(
   OUTPUT ${insns2vm_rb_outputs}
   COMMAND
@@ -142,8 +140,6 @@ add_custom_command(
     ${RUBY_TOOLDIR}/ruby_vm/views/_trace_instruction.erb
     ${RUBY_TOOLDIR}/ruby_vm/views/insns.inc.erb
     ${RUBY_TOOLDIR}/ruby_vm/views/insns_info.inc.erb
-    ${RUBY_TOOLDIR}/ruby_vm/views/mjit_sp_inc.inc.erb
-    ${RUBY_TOOLDIR}/ruby_vm/views/opt_sc.inc.erb
     ${RUBY_TOOLDIR}/ruby_vm/views/optinsn.inc.erb
     ${RUBY_TOOLDIR}/ruby_vm/views/optunifs.inc.erb
     ${RUBY_TOOLDIR}/ruby_vm/views/vm.inc.erb
@@ -219,7 +215,7 @@ add_custom_command(
   COMMAND ${BASERUBY} "${RUBY_TOOLDIR}/id2token.rb" "${CMAKE_CURRENT_SOURCE_DIR}/parse.y" > "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
   COMMAND ${BISON} -d -o "${CMAKE_CURRENT_BINARY_DIR}/y.tab.c" "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_CURRENT_BINARY_DIR}/parse.tmp.y"
-  COMMAND ${SED} -f "${RUBY_TOOLDIR}/ytab.sed"
+  COMMAND ${SED}
     -e "'/^#/s|parse\.tmp\.[iy]|${CMAKE_CURRENT_SOURCE_DIR}/parse.y|'"
     -e "'/^#/s!y\.tab\.c!${CMAKE_CURRENT_BINARY_DIR}/parse.c!'" y.tab.c > parse.c
   COMMAND ${SED} -e "'/^#line.*y\.tab\.h/d;/^#line.*parse.*\.y/d'" y.tab.h > "${CMAKE_CURRENT_BINARY_DIR}/parse.h"
@@ -274,8 +270,8 @@ add_library(ruby-static STATIC
   marshal.c
   math.c
   memory_view.c
-  mjit.c
-  mjit_c.c
+  rjit.c
+  rjit_c.c
   node.c
   numeric.c
   object.c
@@ -306,7 +302,6 @@ add_library(ruby-static STATIC
   thread.c
   time.c
   transcode.c
-  transient_heap.c
   util.c
   variable.c
   version.c
