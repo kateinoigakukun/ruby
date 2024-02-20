@@ -58,6 +58,7 @@ module MakeMakefile
   ##
   # The makefile configuration using the defaults from when Ruby was built.
 
+  Kernel.load ENV["MKMF_TARGET_RBCONFIG"], self if ENV["MKMF_TARGET_RBCONFIG"]
   CONFIG = RbConfig::MAKEFILE_CONFIG
 
   ##
