@@ -4,6 +4,7 @@
 # See Makefile.in for details.
 
 require_relative 'ruby_vm/scripts/insns2vm'
+require_relative 'ruby_vm/find_me'
 
 if $0 == __FILE__
   RubyVM::Insns2VM.router(ARGV).each do |(path, generator)|
