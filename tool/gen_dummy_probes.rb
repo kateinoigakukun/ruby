@@ -3,6 +3,7 @@
 
 # Used to create dummy probes (as for systemtap and DTrace) by Makefiles.
 # See common.mk.
+require_relative "gen_dummy_probes_find_me"
 
 text = ARGF.read
 
