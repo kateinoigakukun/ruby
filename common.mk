@@ -384,7 +384,7 @@ $(EXTS_MK): ext/configure-ext.mk $(srcdir)/template/exts.mk.tmpl \
 	    $(TIMESTAMPDIR)/$(arch)/.time $(TIMESTAMPDIR)/.RUBYCOMMONDIR.time
 	$(Q)$(MAKE) -f ext/configure-ext.mk $(mflags) V=$(V) EXTSTATIC=$(EXTSTATIC) \
 		gnumake=$(gnumake) MINIRUBY="$(MINIRUBY)" \
-		EXTLDFLAGS="$(EXTLDFLAGS)" srcdir="$(srcdir)"
+		EXTLDFLAGS="$(EXTLDFLAGS)" srcdir="$(srcdir)" SHELL="$(SHELL)"
 	$(ECHO) generating makefile $@
 	$(Q)$(MINIRUBY) $(tooldir)/generic_erb.rb -o $@ -c \
 	    $(srcdir)/template/exts.mk.tmpl --gnumake=$(gnumake) --configure-exts=ext/configure-ext.mk
