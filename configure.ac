@@ -1392,7 +1392,7 @@ main()
 		  RUBY_APPEND_OPTIONS(CFLAGS, -mllvm=-wasm-enable-sjlj -mllvm=--wasm-use-legacy-eh=false)
 		  RUBY_APPEND_OPTIONS(CPPFLAGS, -mllvm=-wasm-enable-sjlj -mllvm=--wasm-use-legacy-eh=false)
 		  LIBS="-lsetjmp $LIBS"
-		  POSTLINK="${POSTLINK}"
+		  POSTLINK="\$(WASMOPT) \$(wasmoptflags) -o \$@ \$@${POSTLINK:+; $POSTLINK}"
 		], [
 		  POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) -o \$@ \$@${POSTLINK:+; $POSTLINK}"
 		])
