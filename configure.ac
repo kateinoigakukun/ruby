@@ -1389,8 +1389,8 @@ main()
 		RUBY_APPEND_OPTIONS(CFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
 		RUBY_APPEND_OPTIONS(CPPFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
 		AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
-		  RUBY_APPEND_OPTIONS(CFLAGS, -mllvm -wasm-enable-sjlj)
-		  RUBY_APPEND_OPTIONS(CPPFLAGS, -mllvm -wasm-enable-sjlj)
+		  RUBY_APPEND_OPTIONS(CFLAGS, -mllvm=-wasm-enable-sjlj -mllvm=--wasm-use-legacy-eh=false)
+		  RUBY_APPEND_OPTIONS(CPPFLAGS, -mllvm=-wasm-enable-sjlj -mllvm=--wasm-use-legacy-eh=false)
 		  LIBS="-lsetjmp $LIBS"
 		  POSTLINK="${POSTLINK}"
 		], [
