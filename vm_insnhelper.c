@@ -28,6 +28,7 @@
 #include "internal/variable.h"
 #include "internal/set_table.h"
 #include "internal/struct.h"
+#include "internal/gc.h"
 #include "variable.h"
 
 /* finish iseq array */
@@ -3879,6 +3880,35 @@ vm_method_cfunc_entry(const rb_callable_method_entry_t *me)
     return UNALIGNED_MEMBER_PTR(me->def, body.cfunc);
 }
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+struct vm_wasm_cfunc_call_args {
+    VALUE recv;
+    int argc;
+    const VALUE *argv;
+    VALUE (*invoker)(VALUE recv, int argc, const VALUE *argv, VALUE (*func)(ANYARGS));
+    VALUE (*func)(ANYARGS);
+};
+
+static struct vm_wasm_cfunc_call_args *rb_wasm_cfunc_call_args;
+
+static VALUE
+vm_wasm_cfunc_call_body(VALUE _unused)
+{
+    struct vm_wasm_cfunc_call_args *a = rb_wasm_cfunc_call_args;
+    return (*a->invoker)(a->recv, a->argc, a->argv, a->func);
+}
+
+static VALUE
+vm_wasm_cfunc_call_ensure(VALUE arg)
+{
+    rb_execution_context_t *ec = (rb_execution_context_t *)(void *)arg;
+    rb_gc_unsafe_leave(ec);
+    rb_gc_maybe_run(ec);
+    rb_wasm_cfunc_call_args = NULL;
+    return Qnil;
+}
+#endif
+
 static VALUE
 vm_call_cfunc_with_frame_(rb_execution_context_t *ec, rb_control_frame_t *reg_cfp, struct rb_calling_info *calling,
                           int argc, VALUE *argv, VALUE *stack_bottom)
@@ -3911,7 +3941,20 @@ vm_call_cfunc_with_frame_(rb_execution_context_t *ec, rb_control_frame_t *reg_cf
     if (len >= 0) rb_check_arity(argc, len, len);
 
     reg_cfp->sp = stack_bottom;
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+    struct vm_wasm_cfunc_call_args args = {
+        .recv = recv,
+        .argc = argc,
+        .argv = argv,
+        .invoker = cfunc->invoker,
+        .func = cfunc->func,
+    };
+    rb_gc_unsafe_enter(ec);
+    rb_wasm_cfunc_call_args = &args;
+    val = rb_ensure(vm_wasm_cfunc_call_body, Qnil, vm_wasm_cfunc_call_ensure, (VALUE)(void *)ec);
+#else
     val = (*cfunc->invoker)(recv, argc, argv, cfunc->func);
+#endif
 
     CHECK_CFP_CONSISTENCY("vm_call_cfunc");
 

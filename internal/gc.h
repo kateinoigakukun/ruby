@@ -217,6 +217,17 @@ void rb_gc_ref_update_table_values_only(st_table *tbl);
 
 void rb_gc_initial_stress_set(VALUE flag);
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+/*
+ * GC-safe-point controls for no-Asyncify experiments.
+ */
+void rb_gc_unsafe_enter(rb_execution_context_t *ec);
+void rb_gc_unsafe_leave(rb_execution_context_t *ec);
+bool rb_gc_unsafe_p(const rb_execution_context_t *ec);
+void rb_gc_request(void);
+void rb_gc_maybe_run(rb_execution_context_t *ec);
+#endif
+
 void rb_gc_before_fork(void);
 void rb_gc_after_fork(rb_pid_t pid);
 

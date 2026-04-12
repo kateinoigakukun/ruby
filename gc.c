@@ -4498,6 +4498,14 @@ rb_gc(void)
 {
     unless_objspace(objspace) { return; }
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+    rb_execution_context_t *ec = rb_current_ec_noinline();
+    if (ec && ec->gc_unsafe_depth > 0) {
+        ec->gc_pending = 1;
+        return;
+    }
+#endif
+
     rb_gc_impl_start(objspace, true, true, true, false);
 }
 
@@ -4508,6 +4516,48 @@ rb_during_gc(void)
 
     return rb_gc_impl_during_gc_p(objspace);
 }
+
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+void
+rb_gc_unsafe_enter(rb_execution_context_t *ec)
+{
+    if (!ec) return;
+    ec->gc_unsafe_depth++;
+}
+
+void
+rb_gc_unsafe_leave(rb_execution_context_t *ec)
+{
+    if (!ec) return;
+    if (ec->gc_unsafe_depth > 0) {
+        ec->gc_unsafe_depth--;
+    }
+}
+
+bool
+rb_gc_unsafe_p(const rb_execution_context_t *ec)
+{
+    return ec && ec->gc_unsafe_depth > 0;
+}
+
+void
+rb_gc_request(void)
+{
+    rb_execution_context_t *ec = rb_current_ec_noinline();
+    if (ec) ec->gc_pending = 1;
+}
+
+void
+rb_gc_maybe_run(rb_execution_context_t *ec)
+{
+    unless_objspace(objspace) { return; }
+    if (!ec) return;
+    if (ec->gc_pending && ec->gc_unsafe_depth == 0 && !rb_during_gc()) {
+        ec->gc_pending = 0;
+        rb_gc_impl_start(objspace, true, true, true, false);
+    }
+}
+#endif
 
 size_t
 rb_gc_count(void)
@@ -5365,6 +5415,14 @@ static bool
 malloc_gc_allowed(void)
 {
     rb_ractor_t *r = rb_current_ractor_raw(false);
+
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+    rb_execution_context_t *ec = rb_current_ec_noinline();
+    if (ec && ec->gc_unsafe_depth > 0) {
+        if (!rb_during_gc()) ec->gc_pending = 1;
+        return false;
+    }
+#endif
 
     return r == NULL || !r->malloc_gc_disabled;
 }

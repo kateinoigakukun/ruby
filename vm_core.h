@@ -1081,6 +1081,16 @@ struct rb_execution_context_struct {
 
     uint8_t raised_flag; /* only 3 bits needed */
 
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+    /*
+     * For no-Asyncify GC-safe-point experiments:
+     * - gc_pending: a GC was requested while in GC-unsafe context.
+     * - gc_unsafe_depth: non-zero means GC must be deferred.
+     */
+    uint8_t gc_pending;
+    uint32_t gc_unsafe_depth;
+#endif
+
     /* n.b. only 7 bits needed, really: */
     BITFIELD(enum method_missing_reason, method_missing_reason, 8);
 
@@ -2265,6 +2275,9 @@ void rb_execution_context_mark(const rb_execution_context_t *ec);
 void rb_fiber_close(rb_fiber_t *fib);
 void Init_native_thread(rb_thread_t *th);
 int rb_vm_check_ints_blocking(rb_execution_context_t *ec);
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+void rb_gc_maybe_run(rb_execution_context_t *ec);
+#endif
 
 // vm_sync.h
 void rb_vm_cond_wait(rb_vm_t *vm, rb_nativethread_cond_t *cond);
@@ -2283,6 +2296,9 @@ rb_vm_check_ints(rb_execution_context_t *ec)
     if (UNLIKELY(RUBY_VM_INTERRUPTED_ANY(ec))) {
         rb_threadptr_execute_interrupts(rb_ec_thread_ptr(ec), 0);
     }
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+    rb_gc_maybe_run(ec);
+#endif
 }
 
 /* tracer */
