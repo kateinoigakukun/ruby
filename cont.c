@@ -1744,6 +1744,11 @@ NOINLINE(static void fiber_setcontext(rb_fiber_t *new_fiber, rb_fiber_t *old_fib
 static void
 fiber_setcontext(rb_fiber_t *new_fiber, rb_fiber_t *old_fiber)
 {
+#ifdef COROUTINE_NONE_CONTEXT
+    (void)new_fiber;
+    (void)old_fiber;
+    rb_raise(rb_eNotImpError, "fiber context switching is not supported on WASI minimal profile");
+#endif
     rb_thread_t *th = GET_THREAD();
 
     /* save old_fiber's machine stack - to ensure efficient garbage collection */

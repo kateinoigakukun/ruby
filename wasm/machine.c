@@ -1,5 +1,8 @@
+#include "ruby/internal/config.h"
 #include <stdlib.h>
 #include "wasm/machine.h"
+
+#if !defined(RUBY_WASI_MINIMAL_PROFILE)
 #include "wasm/asyncify.h"
 
 #ifndef WASM_SCAN_STACK_BUFFER_SIZE
@@ -60,3 +63,35 @@ rb_wasm_handle_scan_unwind(void)
 {
     return _rb_wasm_active_scan_buf;
 }
+
+#else
+
+static void *rb_wasm_stack_base = NULL;
+
+__attribute__((constructor))
+int
+rb_wasm_record_stack_base(void)
+{
+    rb_wasm_stack_base = rb_wasm_get_stack_pointer();
+    return 0;
+}
+
+void
+rb_wasm_scan_locals(rb_wasm_scan_func scan)
+{
+    (void)scan;
+}
+
+void *
+rb_wasm_stack_get_base(void)
+{
+    return rb_wasm_stack_base;
+}
+
+void *
+rb_wasm_handle_scan_unwind(void)
+{
+    return NULL;
+}
+
+#endif

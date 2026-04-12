@@ -2855,7 +2855,11 @@ AS_CASE([$coroutine_type], [yes|''], [
             coroutine_type=emscripten
         ],
         [*-wasi*], [
-            coroutine_type=asyncify
+            AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
+                coroutine_type=none
+            ], [
+                coroutine_type=asyncify
+            ])
         ],
         [
             AC_CHECK_FUNCS([getcontext swapcontext makecontext],
@@ -4295,14 +4299,15 @@ enum {
 	],
     [wasi*], [
         AC_LIBOBJ([wasm/missing])
-        AC_LIBOBJ([wasm/runtime])
-        AC_LIBOBJ([wasm/fiber])
         AC_LIBOBJ([wasm/machine])
-        AC_LIBOBJ([wasm/setjmp])
         AC_LIBOBJ([wasm/machine_core])
-        AC_LIBOBJ([wasm/setjmp_core])
         AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
             AC_DEFINE(RUBY_WASI_NO_ASYNCIFY, 1, [Build Ruby/WASI minimal profile without asyncify postlink])
+        ], [
+            AC_LIBOBJ([wasm/runtime])
+            AC_LIBOBJ([wasm/fiber])
+            AC_LIBOBJ([wasm/setjmp])
+            AC_LIBOBJ([wasm/setjmp_core])
         ])
         PLATFORM_DIR=wasm
 ])
