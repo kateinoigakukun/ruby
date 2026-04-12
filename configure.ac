@@ -131,6 +131,17 @@ AS_IF([test "$HAVE_BASERUBY" = no], [DUMP_AST_TARGET='$(empty)'])
 AC_SUBST(X_DUMP_AST, "${DUMP_AST}")
 AC_SUBST(X_DUMP_AST_TARGET, "${DUMP_AST_TARGET}")
 
+RUBY_WASI_PROFILE=compat
+AC_ARG_WITH([wasi-profile],
+  AS_HELP_STRING([--with-wasi-profile=PROFILE], [WASI runtime profile: compat (default) or minimal]),
+  [RUBY_WASI_PROFILE=$withval])
+AS_CASE([$RUBY_WASI_PROFILE], [compat|minimal], [],
+  [AC_MSG_ERROR([unknown --with-wasi-profile=$RUBY_WASI_PROFILE (expected compat|minimal)])])
+AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
+  AC_DEFINE(RUBY_WASI_MINIMAL_PROFILE, 1, [Build Ruby/WASI minimal profile without Asyncify runtime])
+])
+AC_SUBST(RUBY_WASI_PROFILE)
+
 : ${GIT=git}
 HAVE_GIT=yes
 AC_ARG_WITH(git,
@@ -1377,7 +1388,11 @@ main()
 [wasi*],[	LIBS="-lm -lwasi-emulated-mman -lwasi-emulated-signal -lwasi-emulated-getpid -lwasi-emulated-process-clocks $LIBS"
 		RUBY_APPEND_OPTIONS(CFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
 		RUBY_APPEND_OPTIONS(CPPFLAGS, -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS)
-		POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) -o \$@ \$@${POSTLINK:+; $POSTLINK}"
+		AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
+		  POSTLINK="${POSTLINK}"
+		], [
+		  POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) -o \$@ \$@${POSTLINK:+; $POSTLINK}"
+		])
 		# wasi-libc's sys/socket.h is not compatible with -std=gnu99,
 		# so re-declare shutdown in include/ruby/missing.h
 		ac_cv_func_shutdown=no
@@ -4283,6 +4298,9 @@ enum {
         AC_LIBOBJ([wasm/setjmp])
         AC_LIBOBJ([wasm/machine_core])
         AC_LIBOBJ([wasm/setjmp_core])
+        AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
+            AC_DEFINE(RUBY_WASI_NO_ASYNCIFY, 1, [Build Ruby/WASI minimal profile without asyncify postlink])
+        ])
         PLATFORM_DIR=wasm
 ])
 

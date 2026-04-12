@@ -5,10 +5,16 @@ wasmdir = $(srcdir)/wasm
 GNUmakefile: $(wasmdir)/GNUmakefile.in
 WASMOPT = @WASMOPT@
 wasmoptflags = @wasmoptflags@
+RUBY_WASI_PROFILE = @RUBY_WASI_PROFILE@
 
 WASM_TESTRUNNER = wasmtime
 WASM_TESTS = $(wasmdir)/tests/machine_test.wasm $(wasmdir)/tests/setjmp_test.wasm $(wasmdir)/tests/fiber_test.wasm
 WASM_OBJS  = $(wasmdir)/machine_core.o $(wasmdir)/machine.o $(wasmdir)/setjmp.o $(wasmdir)/setjmp_core.o $(wasmdir)/fiber.o $(wasmdir)/runtime.o
+WASM_ASYNCIFY_TESTS = yes
+ifeq ($(RUBY_WASI_PROFILE),minimal)
+WASM_OBJS  = $(wasmdir)/machine_core.o $(wasmdir)/machine.o
+WASM_ASYNCIFY_TESTS = no
+endif
 
 wasm/missing.$(OBJEXT): $(wasmdir)/missing.c $(PLATFORM_D)
 wasm/fiber.$(OBJEXT): $(wasmdir)/fiber.c $(wasmdir)/fiber.h $(wasmdir)/asyncify.h $(PLATFORM_D)
@@ -27,6 +33,7 @@ clean-test-wasm:
 
 $(wasmdir)/tests/%.wasm: $(wasmdir)/tests/%.c $(WASM_OBJS)
 	$(Q) $(CC) -g $(XCFLAGS) $(CFLAGS) $^ -o $@
+	$(Q) test "$(WASM_ASYNCIFY_TESTS)" = "yes" || exit 0
 	$(Q) $(WASMOPT) -g --asyncify --pass-arg=asyncify-ignore-imports -o $@ $@
 
 .PHONY: test-wasm clean-test-wasm
