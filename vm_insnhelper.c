@@ -3889,22 +3889,19 @@ struct vm_wasm_cfunc_call_args {
     VALUE (*func)(ANYARGS);
 };
 
-static struct vm_wasm_cfunc_call_args *rb_wasm_cfunc_call_args;
-
 static VALUE
-vm_wasm_cfunc_call_body(VALUE _unused)
+vm_wasm_cfunc_call_body(VALUE arg)
 {
-    struct vm_wasm_cfunc_call_args *a = rb_wasm_cfunc_call_args;
+    struct vm_wasm_cfunc_call_args *a = (struct vm_wasm_cfunc_call_args *)(void *)(uintptr_t)arg;
     return (*a->invoker)(a->recv, a->argc, a->argv, a->func);
 }
 
 static VALUE
 vm_wasm_cfunc_call_ensure(VALUE arg)
 {
-    rb_execution_context_t *ec = (rb_execution_context_t *)(void *)arg;
+    rb_execution_context_t *ec = (rb_execution_context_t *)(void *)(uintptr_t)arg;
     rb_gc_unsafe_leave(ec);
     rb_gc_maybe_run(ec);
-    rb_wasm_cfunc_call_args = NULL;
     return Qnil;
 }
 #endif
@@ -3950,8 +3947,7 @@ vm_call_cfunc_with_frame_(rb_execution_context_t *ec, rb_control_frame_t *reg_cf
         .func = cfunc->func,
     };
     rb_gc_unsafe_enter(ec);
-    rb_wasm_cfunc_call_args = &args;
-    val = rb_ensure(vm_wasm_cfunc_call_body, Qnil, vm_wasm_cfunc_call_ensure, (VALUE)(void *)ec);
+    val = rb_ensure(vm_wasm_cfunc_call_body, (VALUE)(uintptr_t)&args, vm_wasm_cfunc_call_ensure, (VALUE)(uintptr_t)ec);
 #else
     val = (*cfunc->invoker)(recv, argc, argv, cfunc->func);
 #endif
