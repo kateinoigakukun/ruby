@@ -1391,6 +1391,7 @@ main()
 		AS_IF([test "$RUBY_WASI_PROFILE" = minimal], [
 		  RUBY_APPEND_OPTIONS(CFLAGS, -mllvm -wasm-enable-sjlj)
 		  RUBY_APPEND_OPTIONS(CPPFLAGS, -mllvm -wasm-enable-sjlj)
+		  LIBS="-lsetjmp $LIBS"
 		  POSTLINK="${POSTLINK}"
 		], [
 		  POSTLINK="\$(WASMOPT) --asyncify \$(wasmoptflags) -o \$@ \$@${POSTLINK:+; $POSTLINK}"
