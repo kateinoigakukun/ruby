@@ -102,7 +102,7 @@ extern int ruby_assert_critical_section_entered;
 #define RUBY_ASSERT_CRITICAL_SECTION_LEAVE()
 #endif
 
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 # include "wasm/setjmp.h"
 #else
 # include <setjmp.h>
@@ -963,7 +963,7 @@ typedef void *rb_jmpbuf_t[5];
   `RB_VM_TAG_JMPBUF_GET` transforms a `rb_vm_tag_jmpbuf_t` into a
   `rb_jmpbuf_t` to be passed to `rb_setjmp/rb_longjmp`.
 */
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 /*
   WebAssembly target with Asyncify-based SJLJ needs
   to capture the execution context by unwind/rewind-ing
@@ -2275,7 +2275,7 @@ void rb_execution_context_mark(const rb_execution_context_t *ec);
 void rb_fiber_close(rb_fiber_t *fib);
 void Init_native_thread(rb_thread_t *th);
 int rb_vm_check_ints_blocking(rb_execution_context_t *ec);
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 void rb_gc_maybe_run(rb_execution_context_t *ec);
 #endif
 
@@ -2296,7 +2296,7 @@ rb_vm_check_ints(rb_execution_context_t *ec)
     if (UNLIKELY(RUBY_VM_INTERRUPTED_ANY(ec))) {
         rb_threadptr_execute_interrupts(rb_ec_thread_ptr(ec), 0);
     }
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
     rb_gc_maybe_run(ec);
 #endif
 }

@@ -434,7 +434,7 @@ __extension__({ \
     RUBY__ASAN_DEFAULT_OPTIONS \
     /* RUBY_GLOBAL_SETUP end */
 
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 int rb_wasm_rt_start(int (*)(int, char **), int, char **);
 # define ruby_start_main rb_wasm_rt_start
 #else

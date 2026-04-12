@@ -33,7 +33,7 @@ pass_passed_block_handler(rb_execution_context_t *ec)
 #endif
 
 #include <stdio.h>
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 # include "wasm/setjmp.h"
 #else
 # include <setjmp.h>

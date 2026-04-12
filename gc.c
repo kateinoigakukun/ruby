@@ -16,11 +16,14 @@
 # include "ruby/ruby.h"
 #endif
 
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 # include "wasm/setjmp.h"
 # include "wasm/machine.h"
 #else
 # include <setjmp.h>
+# if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#  include "wasm/machine.h"
+# endif
 #endif
 #include <stdarg.h>
 #include <stdio.h>

@@ -2751,8 +2751,8 @@ vm_exec_handle_exception(rb_execution_context_t *ec, enum ruby_tag_type state, V
 static inline VALUE
 vm_exec_loop(rb_execution_context_t *ec, enum ruby_tag_type state, struct rb_vm_tag *tag, VALUE result);
 
-// for non-Emscripten Wasm build, use vm_exec with optimized setjmp for runtime performance
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+// for non-Emscripten Wasm compat profile, use vm_exec with optimized setjmp for runtime performance
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
 
 struct rb_vm_exec_context {
     rb_execution_context_t *const ec;
@@ -2789,7 +2789,7 @@ vm_exec(rb_execution_context_t *ec)
 
     _tag.retval = Qnil;
 
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
     struct rb_vm_exec_context ctx = {
         .ec = ec,
         .tag = &_tag,
