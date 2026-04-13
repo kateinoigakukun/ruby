@@ -600,6 +600,27 @@ rb_gc_guarded_ptr_val(volatile VALUE *ptr, VALUE val)
 
 static const char *obj_type_name(VALUE obj);
 static st_table *id2ref_tbl;
+
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+/*
+ * GC.stress triggers newobj_slowpath -> garbage_collect without going through
+ * rb_gc(), so it bypasses the wasm deferral in rb_gc(). While gc_unsafe_depth
+ * is raised (see vm_call_cfunc_with_frame_), the VM stack may not cover values
+ * that only live in C locals; running a full mark then hits invalid slots.
+ */
+static bool
+rb_gc_wasm_defer_stress_collect(void)
+{
+    rb_execution_context_t *ec = rb_current_ec_noinline();
+
+    if (ec && ec->gc_unsafe_depth > 0) {
+        if (!rb_during_gc()) ec->gc_pending = 1;
+        return true;
+    }
+    return false;
+}
+#endif
+
 #include "gc/default/default.c"
 
 #if USE_MODULAR_GC && !defined(HAVE_DLOPEN)

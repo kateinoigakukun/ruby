@@ -3901,7 +3901,9 @@ vm_wasm_cfunc_call_ensure(VALUE arg)
 {
     rb_execution_context_t *ec = (rb_execution_context_t *)(void *)(uintptr_t)arg;
     rb_gc_unsafe_leave(ec);
-    rb_gc_maybe_run(ec);
+    /* Defer rb_gc_maybe_run: this runs inside rb_ec_ensure while the callee's
+     * return VALUE may only be in C locals; minimal WASI does not scan those
+     * roots. Pending GC runs from rb_vm_check_ints. */
     return Qnil;
 }
 #endif

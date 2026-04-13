@@ -2470,8 +2470,13 @@ newobj_slowpath(VALUE klass, VALUE flags, rb_objspace_t *objspace, rb_ractor_new
             }
 
             if (ruby_gc_stressful) {
-                if (!garbage_collect(objspace, GPR_FLAG_NEWOBJ)) {
-                    rb_memerror();
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
+                if (!rb_gc_wasm_defer_stress_collect())
+#endif
+                {
+                    if (!garbage_collect(objspace, GPR_FLAG_NEWOBJ)) {
+                        rb_memerror();
+                    }
                 }
             }
         }

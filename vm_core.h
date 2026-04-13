@@ -2275,7 +2275,7 @@ void rb_execution_context_mark(const rb_execution_context_t *ec);
 void rb_fiber_close(rb_fiber_t *fib);
 void Init_native_thread(rb_thread_t *th);
 int rb_vm_check_ints_blocking(rb_execution_context_t *ec);
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
 void rb_gc_maybe_run(rb_execution_context_t *ec);
 #endif
 
@@ -2296,7 +2296,7 @@ rb_vm_check_ints(rb_execution_context_t *ec)
     if (UNLIKELY(RUBY_VM_INTERRUPTED_ANY(ec))) {
         rb_threadptr_execute_interrupts(rb_ec_thread_ptr(ec), 0);
     }
-#if defined(__wasm__) && !defined(__EMSCRIPTEN__) && !defined(RUBY_WASI_MINIMAL_PROFILE)
+#if defined(__wasm__) && !defined(__EMSCRIPTEN__)
     rb_gc_maybe_run(ec);
 #endif
 }
