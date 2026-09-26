@@ -334,18 +334,43 @@ MESSAGE
     end
 
     def self::open
-      log_open
-      $stderr.reopen(@log)
-      $stdout.reopen(@log)
-      yield
-    ensure
-      $stderr.reopen(@orgerr)
-      $stdout.reopen(@orgout)
+      if log = captured_log
+        # A check run by parallel_checks: the standard file descriptors
+        # are shared with the concurrent checks, so only the Ruby level
+        # streams are redirected, and commands are given the log
+        # explicitly.
+        begin
+          out, err = $stdout, $stderr
+          $stdout = $stderr = log
+          yield
+        ensure
+          $stdout, $stderr = out, err
+        end
+      else
+        begin
+          log_open
+          $stderr.reopen(@log)
+          $stdout.reopen(@log)
+          yield
+        ensure
+          $stderr.reopen(@orgerr)
+          $stdout.reopen(@orgout)
+        end
+      end
     end
 
     def self::message(*s)
-      log_open
-      @log.printf(*s)
+      if log = captured_log
+        log.printf(*s)
+      else
+        log_open
+        @log.printf(*s)
+      end
+    end
+
+    # The log of the current check, if it is run by parallel_checks.
+    def self::captured_log
+      ParallelChecks.current&.log
     end
 
     def self::logfile file
@@ -361,7 +386,10 @@ MESSAGE
       end
     end
 
-    def self::postpone
+    def self::postpone(&block)
+      if check = ParallelChecks.current
+        return check.postpone(&block)
+      end
       tmplog = "mkmftmp#{@postpone += 1}.log"
       open do
         log, *save = @log, @logfile, @orgout, @orgerr
@@ -380,6 +408,224 @@ MESSAGE
 
     class << self
       attr_accessor :quiet
+    end
+  end
+
+  # Runs the checks recorded by parallel_checks.  Each check runs in a
+  # Fiber of its own on the calling thread, so the Ruby code of the checks
+  # never runs concurrently; only the commands they run with xsystem do,
+  # waited for by threads.  While a check runs, its state (the file base
+  # name, the log and console output, $defs) is its own, and the output is
+  # replayed in the order of the checks when it is complete.
+  class ParallelChecks # :nodoc:
+    KEY = :mkmf_parallel_check
+
+    # The object yielded by parallel_checks, which records the checks.
+    class Recorder < BasicObject
+      attr_reader :calls
+
+      def initialize(target)
+        @target = target
+        @calls = []
+      end
+
+      def method_missing(meth, *args, **kw, &block)
+        @target.respond_to?(meth, true) or super
+        @calls << [meth, args, kw, block]
+        nil
+      end
+
+      def respond_to_missing?(meth, priv = false)
+        @target.respond_to?(meth, true)
+      end
+    end
+
+    # The check running in the current fiber, if any.
+    def self.current
+      Thread.current[KEY]
+    end
+
+    # Whether the checks can run concurrently here.  The output buffers
+    # are files removed while open, which Windows does not allow, and
+    # mswin's compiler also writes files of fixed names; a $universal
+    # link runs with TMPDIR set for the whole process.  Other compilers
+    # than GCC and clang are not known to write only the files named.
+    def self.supported?
+      !($mswin or $mingw or $universal) and CONFIG['GCC'] == 'yes'
+    end
+
+    class Check
+      attr_reader :conftest, :log, :error
+
+      def initialize(conftest, target, meth, args, kw, block)
+        @conftest = conftest
+        @log = tmpfile
+        @console = tmpfile
+        @defs = $defs.dup
+        @ndefs = $defs.size
+        @stdout, @stderr = @console, $stderr
+        @fiber = Fiber.new do
+          Thread.current[KEY] = self
+          begin
+            @result = target.__send__(meth, *args, **kw, &block)
+          rescue Exception => e
+            @error = e
+          end
+          nil
+        end
+      end
+
+      # An anonymous file in the current directory, for output which is
+      # also written by commands.
+      def tmpfile
+        name = "#{@conftest}.log"
+        f = File.open(name, "w+b")
+        File.unlink(name)
+        f.sync = true
+        f
+      end
+
+      def done?
+        !@fiber.alive?
+      end
+
+      def fail(error)
+        @error ||= error
+      end
+
+      # Runs the check until it waits for a command or ends; returns the
+      # block which runs the command in the former case.  The globals of
+      # the check are swapped in meanwhile.
+      def resume(value = nil)
+        saved = $stdout, $stderr, $defs
+        $stdout, $stderr, $defs = @stdout, @stderr, @defs
+        @fiber.resume(value)
+      ensure
+        @stdout, @stderr, @defs = $stdout, $stderr, $defs
+        $stdout, $stderr, $defs = saved
+        finish if done?
+      end
+
+      # Waits in the check's fiber for the result of _block_, which is run
+      # in another thread.
+      def wait(&block)
+        error, value = Fiber.yield(block)
+        raise error if error
+        value
+      end
+
+      # Runs _command_ as xsystem does; the output goes to the log.
+      def system(env, command, werror: false)
+        unless werror
+          log = @log
+          return wait {Kernel.system(env, *command, out: log, err: log)}
+        end
+        result = nil
+        postpone do |log|
+          output, status = wait {[IO.popen(env, command, err: log, &:read), $?]}
+          result = (status.success? and log.size.zero?)
+          output
+        end
+        result
+      end
+
+      # Logging.postpone for the check.
+      def postpone
+        log, @log = @log, tmpfile
+        begin
+          log.print(Logging.open {yield @log})
+        ensure
+          @log.rewind
+          IO.copy_stream(@log, log)
+          @log.close
+          @log = log
+        end
+      end
+
+      def finish
+        return unless @console
+        unless @defs[0, @ndefs] == $defs[0, @ndefs]
+          fail RuntimeError.new("$defs changed other than by appending in parallel_checks")
+        end
+        @defs = @defs.drop(@ndefs)
+        @log.rewind
+        @output = @log.read.gsub(/\b#{@conftest}\b/, CONFTEST)
+        @log.close
+        @console.rewind
+        @message = @console.read
+        @console.close
+        @console = nil
+      end
+
+      # Writes the output of the check in place, and returns its result.
+      def replay
+        Logging.message("%s", @output)
+        unless @message.empty?
+          $stdout.write(@message)
+          $stdout.flush
+        end
+        $defs.concat(@defs)
+        raise @error if @error
+        @result
+      end
+    end
+
+    def initialize(jobs)
+      @jobs = jobs
+    end
+
+    # Runs _calls_, each a [method name, arguments, keyword arguments,
+    # block] of _target_, and returns their results.
+    def run(target, calls)
+      config = self.class.build_config
+      names = Array.new(@jobs) {|i| "mkmf#{i}conf"}
+      events = Thread::Queue.new
+      threads = []
+      checks = []               # started and not replayed yet
+      results = []
+      failed = false
+      step = proc do |check, value|
+        block = check.resume(value)
+        unless self.class.build_config == config
+          check.fail(RuntimeError.new(CONFIG_CHANGED))
+        end
+        failed ||= check.error
+        if check.done?
+          names << check.conftest
+        else
+          threads << Thread.new do
+            events << [check, [nil, block.call]]
+          rescue Exception => e
+            events << [check, [e, nil]]
+          end
+        end
+      end
+      loop do
+        until failed or calls.empty? or names.empty?
+          checks << (check = Check.new(names.shift, target, *calls.shift))
+          step[check, nil]
+        end
+        # After a failure, the checks still running are waited for, so
+        # that they remove their files, before the failed one is replayed.
+        running = checks.count {|c| !c.done?}
+        while checks.first&.done? and !(failed and running > 0)
+          results << checks.shift.replay
+        end
+        break if checks.empty? and calls.empty?
+        step[*events.pop]
+      end
+      results
+    ensure
+      threads.each(&:join)
+    end
+
+    CONFIG_CHANGED = "the build configuration changed in parallel_checks"
+
+    # The globals which commands depend on; they must not change during
+    # the checks.
+    def self.build_config
+      [$libs, $LIBPATH, $DEFLIBPATH, $INCFLAGS, $CPPFLAGS, $CFLAGS, $CXXFLAGS,
+       $ARCH_FLAG, $LDFLAGS, $LIBS, $LOCAL_LIBS].map(&:dup)
     end
   end
 
@@ -440,7 +686,9 @@ MESSAGE
     env, command = expand_command(command)
     Logging::open do
       puts [env_quote(env), command.quote].join(' ')
-      if werror
+      if check = ParallelChecks.current
+        check.system(env, command, werror: werror)
+      elsif werror
         result = nil
         Logging.postpone do |log|
           output = IO.popen(env, command, &:read)
@@ -465,6 +713,11 @@ MESSAGE
       else
         puts "| #{command}"
       end
+      if ParallelChecks.current
+        # The error output goes to the log; see Logging.open.
+        opts = Hash === mode.last ? mode.pop : {}
+        mode << {err: $stderr, **opts}
+      end
       IO.popen(env, commands, *mode, &block)
     end
   end
@@ -487,8 +740,25 @@ EOM
   # Returns the language-dependent source file name for configuration
   # checks.
   def conftest_source
-    CONFTEST_C
+    conftest_sub(CONFTEST_C)
   end
+
+  # :stopdoc:
+
+  # The base name of the files of the current configuration check:
+  # CONFTEST, or a name of its own for a check run by parallel_checks.
+  def conftest_name
+    ParallelChecks.current&.conftest || CONFTEST
+  end
+
+  # Substitutes conftest_name for CONFTEST in the file name or command
+  # template _str_.
+  def conftest_sub(str)
+    name = conftest_name
+    name == CONFTEST ? str : str.gsub(/\b#{CONFTEST}\b/, name)
+  end
+
+  # :startdoc:
 
   # Creats temporary source file from +COMMON_HEADERS+ and _src_.
   # Yields the created source string and uses the returned string as
@@ -563,7 +833,7 @@ MSG
     # linker flags may change the compilation too: only plain links use
     # the precompiled prelude
     conf['CFLAGS'] += conftest_pch(conf) if ldflags.to_s.strip.empty?
-    RbConfig::expand(TRY_LINK.dup, conf)
+    RbConfig::expand(conftest_sub(TRY_LINK.dup), conf)
   end
 
   def cc_config(opt="")
@@ -578,7 +848,7 @@ MSG
     # extra options (a -Werror flag included) may change what the prelude
     # compiles to or warns about: only plain compiles use the precompiled one
     pch = opt.to_s.strip.empty? ? conftest_pch(conf) : ""
-    RbConfig::expand("$(CC) #$INCFLAGS #$CPPFLAGS #$CFLAGS #$ARCH_FLAG #{opt}#{pch} -c #{CONFTEST_C}",
+    RbConfig::expand("$(CC) #$INCFLAGS #$CPPFLAGS #$CFLAGS #$ARCH_FLAG #{opt}#{pch} -c #{conftest_sub(CONFTEST_C)}",
                      conf)
   end
 
@@ -643,7 +913,7 @@ MSG
 
   def cpp_command(outfile, opt="")
     conf = cpp_config(opt)
-    RbConfig::expand("$(CPP) #$INCFLAGS #$CPPFLAGS #$CFLAGS #{opt} #{CONFTEST_C} #{outfile}",
+    RbConfig::expand("$(CPP) #$INCFLAGS #$CPPFLAGS #$CFLAGS #{opt} #{conftest_sub(CONFTEST_C)} #{outfile}",
                      conf)
   end
 
@@ -670,7 +940,7 @@ MSG
   end
 
   def try_link0(src, opt = "", ldflags: "", **opts, &b) # :nodoc:
-    exe = CONFTEST+$EXEEXT
+    exe = conftest_name+$EXEEXT
     cmd = link_command(ldflags, opt)
     if $universal
       require 'tmpdir'
@@ -687,7 +957,7 @@ MSG
     end and File.executable?(exe) or return nil
     exe
   ensure
-    MakeMakefile.rm_rf(*Dir["#{CONFTEST}*"]-[exe])
+    MakeMakefile.rm_rf(*Dir["#{conftest_name}*"]-[exe])
   end
 
   # Returns whether or not the +src+ can be compiled as a C source and linked
@@ -718,9 +988,9 @@ MSG
   def try_compile(src, opt = "", werror: nil, **opts, &b)
     opt = werror_flag(opt) if werror
     try_do(src, cc_command(opt), werror: werror, **opts, &b) and
-      File.file?("#{CONFTEST}.#{$OBJEXT}")
+      File.file?("#{conftest_name}.#{$OBJEXT}")
   ensure
-    MakeMakefile.rm_f "#{CONFTEST}*"
+    MakeMakefile.rm_f "#{conftest_name}*"
   end
 
   # Returns whether or not the +src+ can be preprocessed with the C
@@ -733,10 +1003,10 @@ MSG
   # [+src+] a String which contains a C source
   # [+opt+] a String which contains preprocessor options
   def try_cpp(src, opt = "", **opts, &b)
-    try_do(src, cpp_command(CPPOUTFILE, opt), **opts, &b) and
-      File.file?("#{CONFTEST}.i")
+    try_do(src, cpp_command(conftest_sub(CPPOUTFILE), opt), **opts, &b) and
+      File.file?("#{conftest_name}.i")
   ensure
-    MakeMakefile.rm_f "#{CONFTEST}*"
+    MakeMakefile.rm_f "#{conftest_name}*"
   end
 
   alias try_header try_compile
@@ -894,12 +1164,12 @@ int main() {printf("%"PRI_CONFTEST_PREFIX"#{neg ? 'd' : 'u'}\\n", conftest_const
 }
       begin
         if try_link0(src, opt, &b)
-          xpopen("./#{CONFTEST}") do |f|
+          xpopen("./#{conftest_name}") do |f|
             return Integer(f.gets)
           end
         end
       ensure
-        MakeMakefile.rm_f "#{CONFTEST}#{$EXEEXT}"
+        MakeMakefile.rm_f "#{conftest_name}#{$EXEEXT}"
       end
     end
     nil
@@ -996,11 +1266,13 @@ SRC
         }.empty?
       else
         puts("    egrep '#{pat}'")
-        system("egrep", pat, in: f)
+        opts = {in: f}
+        opts[:out] = $stdout if ParallelChecks.current # the log
+        system("egrep", pat, **opts)
       end
     end
   ensure
-    MakeMakefile.rm_f "#{CONFTEST}*"
+    MakeMakefile.rm_f "#{conftest_name}*"
     log_src(src)
   end
 
@@ -1039,12 +1311,12 @@ SRC
   def try_run(src, opt = "", &b)
     raise "cannot run test program while cross compiling" if CROSS_COMPILING
     if try_link0(src, opt, &b)
-      xsystem("./#{CONFTEST}")
+      xsystem("./#{conftest_name}")
     else
       nil
     end
   ensure
-    MakeMakefile.rm_f "#{CONFTEST}*"
+    MakeMakefile.rm_f "#{conftest_name}*"
   end
 
   def install_files(mfile, ifiles, map = nil, srcprefix = nil)
@@ -1152,6 +1424,68 @@ SRC
       end
       msg
     end
+  end
+
+  # :startdoc:
+
+  # Runs the checks called on the object yielded to the block, such as
+  # <code>have_func</code>, <code>have_header</code>,
+  # <code>have_struct_member</code>, <code>have_type</code> or
+  # <code>have_const</code>, concurrently, and returns their results in an
+  # Array.  The messages, <code>mkmf.log</code> and <code>$defs</code> end
+  # up as if the checks had been called one after another, in the order
+  # they were called in the block:
+  #
+  #   have_func("socket", headers) or abort
+  #   sendmsg, recvmsg, _ = parallel_checks do |c|
+  #     c.have_func("sendmsg", headers)
+  #     c.have_func("recvmsg", headers)
+  #     c.then {have_func("inet_ntop", headers) or have_func("inet_ntoa", headers)}
+  #   end
+  #
+  # The checks are called when the block returns, so they must not depend
+  # on each other's results, except the ones in a block given to +then+,
+  # which run one after another as one check.  They must not change the build
+  # configuration which the commands depend on (<code>$libs</code>,
+  # <code>$CFLAGS</code>, <code>$INCFLAGS</code> and so on), so
+  # <code>have_library</code>, <code>find_library</code>,
+  # <code>find_header</code> and <code>append_cflags</code> cannot be
+  # among them; if the configuration changes, an error is raised.
+  #
+  # Up to +jobs+ checks run at once; the default is the <code>-j</code>
+  # option of make when run by make, or the number of processors, at most
+  # 8.  The checks run one after another when +jobs+ is 1, and on
+  # platforms and compilers where it is not supported.
+  def parallel_checks(jobs = nil)
+    recorder = ParallelChecks::Recorder.new(self)
+    yield recorder
+    calls = recorder.calls
+    jobs ||= parallel_checks_jobs
+    if jobs > 1 and calls.size > 1 and ParallelChecks.supported? and !ParallelChecks.current
+      ParallelChecks.new(jobs).run(self, calls)
+    else
+      config = ParallelChecks.build_config
+      calls.map do |meth, args, kw, block|
+        result = __send__(meth, *args, **kw, &block)
+        ParallelChecks.build_config == config or raise ParallelChecks::CONFIG_CHANGED
+        result
+      end
+    end
+  end
+
+  # :stopdoc:
+
+  def parallel_checks_jobs
+    flags = [ENV["MAKEFLAGS"], *$mflags].join(" ")
+    if /(?:\A|\s)(?:-j|--jobs=?)(\d*)(?=\s|\z)/ =~ flags
+      return $1.to_i if $1.to_i > 0 # otherwise no limit
+    elsif ENV["MAKELEVEL"]
+      return 1                  # make without -j
+    end
+    require 'etc'
+    [Etc.nprocessors, 8].min
+  rescue LoadError              # miniruby
+    1
   end
 
   # :startdoc:
@@ -3127,13 +3461,13 @@ realclean: distclean
     end
 
     def conftest_source
-      CONFTEST_CXX
+      conftest_sub(CONFTEST_CXX)
     end
 
     def cc_command(opt="")
       conf = cc_config(opt)
       cxx_command(opt, conf)
-      RbConfig::expand("$(CXX) #$INCFLAGS #$CPPFLAGS #$CXXFLAGS #$ARCH_FLAG #{opt} -c #{CONFTEST_CXX}",
+      RbConfig::expand("$(CXX) #$INCFLAGS #$CPPFLAGS #$CXXFLAGS #$ARCH_FLAG #{opt} -c #{conftest_sub(CONFTEST_CXX)}",
                        conf)
     end
 
@@ -3143,13 +3477,13 @@ realclean: distclean
       cpp = conf['CPP'].sub(/(\A|\s)#{Regexp.quote(conf['CC'])}(?=\z|\s)/) {
         "#$1#{cxx}"
       }
-      RbConfig::expand("#{cpp} #$INCFLAGS #$CPPFLAGS #$CXXFLAGS #{opt} #{CONFTEST_CXX} #{outfile}",
+      RbConfig::expand("#{cpp} #$INCFLAGS #$CPPFLAGS #$CXXFLAGS #{opt} #{conftest_sub(CONFTEST_CXX)} #{outfile}",
                        conf)
     end
 
     def link_command(ldflags, *opts)
       conf = link_config(ldflags, *opts)
-      RbConfig::expand(TRY_LINK_CXX.dup, conf)
+      RbConfig::expand(conftest_sub(TRY_LINK_CXX.dup), conf)
     end
 
     def cxx_command(opt="", conf = cc_config(opt))
