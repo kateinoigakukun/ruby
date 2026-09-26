@@ -335,20 +335,6 @@ end
   end
 }
 
-have_struct_member("struct sockaddr", "sa_len", headers) # 4.4BSD
-have_struct_member("struct sockaddr_in", "sin_len", headers) # 4.4BSD
-have_struct_member("struct sockaddr_in6", "sin6_len", headers) # 4.4BSD
-
-if have_type("struct sockaddr_un", headers) # POSIX
-  have_struct_member("struct sockaddr_un", "sun_len", headers) # 4.4BSD
-end
-
-have_type("struct sockaddr_dl", headers) # AF_LINK address.  4.4BSD since Net2
-
-have_type("struct sockaddr_storage", headers)
-
-have_type("struct addrinfo", headers)
-
 def check_socklen(headers)
   def (fmt = "none").%(x)
     x || self
@@ -363,86 +349,114 @@ def check_socklen(headers)
   $defs << "-DRSTRING_SOCKLEN=(socklen_t)"+s
 end
 
-if have_type("socklen_t", headers)
-  check_socklen(headers)
+# The checks below depend only on the headers found above, and the ones
+# in each block of `c.then` only on each other.
+have_msg_control = have_tcp_info = nil
+parallel_checks do |c|
+  c.have_struct_member("struct sockaddr", "sa_len", headers) # 4.4BSD
+  c.have_struct_member("struct sockaddr_in", "sin_len", headers) # 4.4BSD
+  c.have_struct_member("struct sockaddr_in6", "sin6_len", headers) # 4.4BSD
+
+  c.then {
+    if have_type("struct sockaddr_un", headers) # POSIX
+      have_struct_member("struct sockaddr_un", "sun_len", headers) # 4.4BSD
+    end
+  }
+
+  c.have_type("struct sockaddr_dl", headers) # AF_LINK address.  4.4BSD since Net2
+
+  c.have_type("struct sockaddr_storage", headers)
+
+  c.have_type("struct addrinfo", headers)
+
+  c.then {
+    if have_type("socklen_t", headers)
+      check_socklen(headers)
+    end
+  }
+
+  c.then {
+    have_type("struct in_pktinfo", headers) {|src|
+      src.sub(%r'^/\*top\*/', '\&'"\n#if defined(IPPROTO_IP) && defined(IP_PKTINFO)") <<
+      "#else\n" << "#error\n" << ">>>>>> no in_pktinfo <<<<<<\n" << "#endif\n"
+    } and have_struct_member("struct in_pktinfo", "ipi_spec_dst", headers)
+  }
+  c.have_type("struct in6_pktinfo", headers) {|src|
+    src.sub(%r'^/\*top\*/', '\&'"\n#if defined(IPPROTO_IPV6) && defined(IPV6_PKTINFO)") <<
+    "#else\n" << "#error\n" << ">>>>>> no in6_pktinfo <<<<<<\n" << "#endif\n"
+  }
+
+  c.have_type("struct sockcred", headers)
+  c.have_type("struct cmsgcred", headers)
+
+  c.have_type("struct ip_mreq", headers) # 4.4BSD
+  c.have_type("struct ip_mreqn", headers) # Linux 2.4
+  c.have_type("struct ipv6_mreq", headers) # RFC 3493
+
+  c.then {have_msg_control = have_struct_member('struct msghdr', 'msg_control', headers)} unless $mswin or $mingw
+  c.have_struct_member('struct msghdr', 'msg_accrights', headers)
+
+  c.then {have_tcp_info = have_type("struct tcp_info", headers)}
 end
 
-have_type("struct in_pktinfo", headers) {|src|
-  src.sub(%r'^/\*top\*/', '\&'"\n#if defined(IPPROTO_IP) && defined(IP_PKTINFO)") <<
-  "#else\n" << "#error\n" << ">>>>>> no in_pktinfo <<<<<<\n" << "#endif\n"
-} and have_struct_member("struct in_pktinfo", "ipi_spec_dst", headers)
-have_type("struct in6_pktinfo", headers) {|src|
-  src.sub(%r'^/\*top\*/', '\&'"\n#if defined(IPPROTO_IPV6) && defined(IPV6_PKTINFO)") <<
-  "#else\n" << "#error\n" << ">>>>>> no in6_pktinfo <<<<<<\n" << "#endif\n"
-}
+if have_tcp_info
+  parallel_checks do |c|
+    c.have_const("TCP_ESTABLISHED", headers)
+    c.have_const("TCP_SYN_SENT", headers)
+    c.have_const("TCP_SYN_RECV", headers)
+    c.have_const("TCP_FIN_WAIT1", headers)
+    c.have_const("TCP_FIN_WAIT2", headers)
+    c.have_const("TCP_TIME_WAIT", headers)
+    c.have_const("TCP_CLOSE", headers)
+    c.have_const("TCP_CLOSE_WAIT", headers)
+    c.have_const("TCP_LAST_ACK", headers)
+    c.have_const("TCP_LISTEN", headers)
+    c.have_const("TCP_CLOSING", headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_state', headers)
+    if /solaris/ !~ RUBY_PLATFORM
+      c.have_struct_member('struct tcp_info', 'tcpi_ca_state', headers)
+    end
+    c.have_struct_member('struct tcp_info', 'tcpi_retransmits', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_probes', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_backoff', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_options', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_wscale', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_wscale', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rto', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_ato', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_mss', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_mss', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_unacked', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_sacked', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_lost', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_retrans', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_fackets', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_last_data_sent', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_last_ack_sent', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_last_data_recv', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_last_ack_recv', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_pmtu', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_ssthresh', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rtt', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rttvar', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_ssthresh', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_cwnd', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_advmss', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_reordering', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_rtt', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_space', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_total_retrans', headers)
 
-have_type("struct sockcred", headers)
-have_type("struct cmsgcred", headers)
-
-have_type("struct ip_mreq", headers) # 4.4BSD
-have_type("struct ip_mreqn", headers) # Linux 2.4
-have_type("struct ipv6_mreq", headers) # RFC 3493
-
-have_msg_control = nil
-have_msg_control = have_struct_member('struct msghdr', 'msg_control', headers) unless $mswin or $mingw
-have_struct_member('struct msghdr', 'msg_accrights', headers)
-
-if have_type("struct tcp_info", headers)
-  have_const("TCP_ESTABLISHED", headers)
-  have_const("TCP_SYN_SENT", headers)
-  have_const("TCP_SYN_RECV", headers)
-  have_const("TCP_FIN_WAIT1", headers)
-  have_const("TCP_FIN_WAIT2", headers)
-  have_const("TCP_TIME_WAIT", headers)
-  have_const("TCP_CLOSE", headers)
-  have_const("TCP_CLOSE_WAIT", headers)
-  have_const("TCP_LAST_ACK", headers)
-  have_const("TCP_LISTEN", headers)
-  have_const("TCP_CLOSING", headers)
-  have_struct_member('struct tcp_info', 'tcpi_state', headers)
-  if /solaris/ !~ RUBY_PLATFORM
-    have_struct_member('struct tcp_info', 'tcpi_ca_state', headers)
+    # FreeBSD extension
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_wnd', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_bwnd', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_nxt', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_nxt', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_toe_tid', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_rexmitpack', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_rcv_ooopack', headers)
+    c.have_struct_member('struct tcp_info', 'tcpi_snd_zerowin', headers)
   end
-  have_struct_member('struct tcp_info', 'tcpi_retransmits', headers)
-  have_struct_member('struct tcp_info', 'tcpi_probes', headers)
-  have_struct_member('struct tcp_info', 'tcpi_backoff', headers)
-  have_struct_member('struct tcp_info', 'tcpi_options', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_wscale', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_wscale', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rto', headers)
-  have_struct_member('struct tcp_info', 'tcpi_ato', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_mss', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_mss', headers)
-  have_struct_member('struct tcp_info', 'tcpi_unacked', headers)
-  have_struct_member('struct tcp_info', 'tcpi_sacked', headers)
-  have_struct_member('struct tcp_info', 'tcpi_lost', headers)
-  have_struct_member('struct tcp_info', 'tcpi_retrans', headers)
-  have_struct_member('struct tcp_info', 'tcpi_fackets', headers)
-  have_struct_member('struct tcp_info', 'tcpi_last_data_sent', headers)
-  have_struct_member('struct tcp_info', 'tcpi_last_ack_sent', headers)
-  have_struct_member('struct tcp_info', 'tcpi_last_data_recv', headers)
-  have_struct_member('struct tcp_info', 'tcpi_last_ack_recv', headers)
-  have_struct_member('struct tcp_info', 'tcpi_pmtu', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_ssthresh', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rtt', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rttvar', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_ssthresh', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_cwnd', headers)
-  have_struct_member('struct tcp_info', 'tcpi_advmss', headers)
-  have_struct_member('struct tcp_info', 'tcpi_reordering', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_rtt', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_space', headers)
-  have_struct_member('struct tcp_info', 'tcpi_total_retrans', headers)
-
-  # FreeBSD extension
-  have_struct_member('struct tcp_info', 'tcpi_snd_wnd', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_bwnd', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_nxt', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_nxt', headers)
-  have_struct_member('struct tcp_info', 'tcpi_toe_tid', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_rexmitpack', headers)
-  have_struct_member('struct tcp_info', 'tcpi_rcv_ooopack', headers)
-  have_struct_member('struct tcp_info', 'tcpi_snd_zerowin', headers)
 end
 
 case RUBY_PLATFORM
@@ -463,41 +477,6 @@ end
 
 if have_func(test_func, headers)
 
-  have_func("sendmsg(0, (struct msghdr *)NULL, 0)", headers) # POSIX
-  have_recvmsg = have_func("recvmsg(0, (struct msghdr *)NULL, 0)", headers) # POSIX
-
-  have_func("freehostent((struct hostent *)NULL)", headers) # RFC 2553
-  have_func("freeaddrinfo((struct addrinfo *)NULL)", headers) # RFC 2553
-
-  if /haiku/ !~ RUBY_PLATFORM and
-     have_func("gai_strerror(0)", headers) # POSIX
-    if checking_for("gai_strerror() returns const pointer") {!try_compile(<<EOF)}
-#{cpp_include(headers)}
-#include <stdlib.h>
-void
-conftest_gai_strerror_is_const()
-{
-    *gai_strerror(0) = 0;
-}
-EOF
-      $defs << "-DGAI_STRERROR_CONST"
-    end
-  end
-
-  have_func("accept4", headers)
-
-  have_func('inet_ntop(0, (const void *)0, (char *)0, 0)', headers) or
-    have_func("inet_ntoa(*(struct in_addr *)NULL)", headers)
-  have_func('inet_pton(0, "", (void *)0)', headers) or
-    have_func('inet_aton("", (struct in_addr *)0)', headers)
-  have_func('getservbyport(0, "")', headers)
-  have_func("getifaddrs((struct ifaddrs **)NULL)", headers)
-  have_struct_member("struct if_data", "ifi_vhid", headers) # FreeBSD
-
-  have_func("getpeereid", headers)
-
-  have_func("getpeerucred(0, (ucred_t **)NULL)", headers) # SunOS
-
   have_func_decl = proc do |name, headers|
     # check if there is a declaration of <name> by trying to declare
     # both "int <name>(void)" and "void <name>(void)"
@@ -509,19 +488,72 @@ EOF
       $defs << "-DNEED_#{name.tr_cpp}_DECL"
     end
   end
-  if have_func('if_indextoname(0, "")', headers)
-    have_func_decl["if_indextoname", headers]
-  end
-  if have_func('if_nametoindex("")', headers)
-    have_func_decl["if_nametoindex", headers]
-  end
 
-  have_func("hsterror", headers)
-  have_func('getipnodebyname("", 0, 0, (int *)0)', headers) # RFC 2553
-  have_func('gethostbyname2("", 0)', headers) # RFC 2133
-  have_func("socketpair(0, 0, 0, 0)", headers)
-  unless have_func("gethostname((char *)0, 0)", headers)
-    have_func("uname((struct utsname *)NULL)", headers)
+  # The checks below depend only on the headers and libraries found
+  # above, and the ones in each block of `c.then` only on each other.
+  have_recvmsg = nil
+  parallel_checks do |c|
+    c.have_func("sendmsg(0, (struct msghdr *)NULL, 0)", headers) # POSIX
+    c.then {have_recvmsg = have_func("recvmsg(0, (struct msghdr *)NULL, 0)", headers)} # POSIX
+
+    c.have_func("freehostent((struct hostent *)NULL)", headers) # RFC 2553
+    c.have_func("freeaddrinfo((struct addrinfo *)NULL)", headers) # RFC 2553
+
+    c.then {
+      if /haiku/ !~ RUBY_PLATFORM and
+         have_func("gai_strerror(0)", headers) # POSIX
+        if checking_for("gai_strerror() returns const pointer") {!try_compile(<<EOF)}
+#{cpp_include(headers)}
+#include <stdlib.h>
+void
+conftest_gai_strerror_is_const()
+{
+    *gai_strerror(0) = 0;
+}
+EOF
+          $defs << "-DGAI_STRERROR_CONST"
+        end
+      end
+    }
+
+    c.have_func("accept4", headers)
+
+    c.then {
+      have_func('inet_ntop(0, (const void *)0, (char *)0, 0)', headers) or
+        have_func("inet_ntoa(*(struct in_addr *)NULL)", headers)
+    }
+    c.then {
+      have_func('inet_pton(0, "", (void *)0)', headers) or
+        have_func('inet_aton("", (struct in_addr *)0)', headers)
+    }
+    c.have_func('getservbyport(0, "")', headers)
+    c.have_func("getifaddrs((struct ifaddrs **)NULL)", headers)
+    c.have_struct_member("struct if_data", "ifi_vhid", headers) # FreeBSD
+
+    c.have_func("getpeereid", headers)
+
+    c.have_func("getpeerucred(0, (ucred_t **)NULL)", headers) # SunOS
+
+    c.then {
+      if have_func('if_indextoname(0, "")', headers)
+        have_func_decl["if_indextoname", headers]
+      end
+    }
+    c.then {
+      if have_func('if_nametoindex("")', headers)
+        have_func_decl["if_nametoindex", headers]
+      end
+    }
+
+    c.have_func("hsterror", headers)
+    c.have_func('getipnodebyname("", 0, 0, (int *)0)', headers) # RFC 2553
+    c.have_func('gethostbyname2("", 0)', headers) # RFC 2133
+    c.have_func("socketpair(0, 0, 0, 0)", headers)
+    c.then {
+      unless have_func("gethostname((char *)0, 0)", headers)
+        have_func("uname((struct utsname *)NULL)", headers)
+      end
+    }
   end
 
   ipv6 = false
@@ -565,36 +597,44 @@ ipv6 kit and compile beforehand.
 EOS
   end
 
-  if !have_macro("IPPROTO_IPV6", headers) && have_const("IPPROTO_IPV6", headers)
-    File.read(File.join(File.dirname(__FILE__), "mkconstants.rb")).sub(/\A.*^__END__$/m, '').split(/\r?\n/).grep(/\AIPPROTO_\w*/){$&}.each {|name|
-      have_const(name, headers) unless $defs.include?("-DHAVE_CONST_#{name.upcase}")
-    }
-  end
-
-  if enable_config("close-fds-by-recvmsg-with-peek") {
-      have_msg_control && have_recvmsg &&
-      have_const('AF_UNIX', headers) && have_const('SCM_RIGHTS', headers) &&
-      test_recvmsg_with_msg_peek_creates_fds(headers)
-     }
-    $defs << "-DFD_PASSING_WORK_WITH_RECVMSG_MSG_PEEK"
-  end
-
-  case enable_config("wide-getaddrinfo")
-  when true
-    getaddr_info_ok = :wide
-  when nil, false
-    getaddr_info_ok = (:wide if getaddr_info_ok.nil?)
-    if have_func("getnameinfo", headers) and have_func("getaddrinfo", headers)
-      if CROSS_COMPILING ||
-         $mingw || $mswin ||
-         checking_for("system getaddrinfo working") {
-           try_run(cpp_include(headers) + GETADDRINFO_GETNAMEINFO_TEST)
-         }
-        getaddr_info_ok = :os
+  # These depend only on the checks above, and each only on itself.
+  getaddr_info_ok = nil
+  parallel_checks do |c|
+    c.then {
+      if !have_macro("IPPROTO_IPV6", headers) && have_const("IPPROTO_IPV6", headers)
+        File.read(File.join(File.dirname(__FILE__), "mkconstants.rb")).sub(/\A.*^__END__$/m, '').split(/\r?\n/).grep(/\AIPPROTO_\w*/){$&}.each {|name|
+          have_const(name, headers) unless $defs.include?("-DHAVE_CONST_#{name.upcase}")
+        }
       end
-    end
-  else
-    raise "unexpected enable_config() value"
+    }
+    c.then {
+      if enable_config("close-fds-by-recvmsg-with-peek") {
+          have_msg_control && have_recvmsg &&
+          have_const('AF_UNIX', headers) && have_const('SCM_RIGHTS', headers) &&
+          test_recvmsg_with_msg_peek_creates_fds(headers)
+         }
+        $defs << "-DFD_PASSING_WORK_WITH_RECVMSG_MSG_PEEK"
+      end
+    }
+    c.then {
+      case enable_config("wide-getaddrinfo")
+      when true
+        getaddr_info_ok = :wide
+      when nil, false
+        getaddr_info_ok = (:wide if getaddr_info_ok.nil?)
+        if have_func("getnameinfo", headers) and have_func("getaddrinfo", headers)
+          if CROSS_COMPILING ||
+             $mingw || $mswin ||
+             checking_for("system getaddrinfo working") {
+               try_run(cpp_include(headers) + GETADDRINFO_GETNAMEINFO_TEST)
+             }
+            getaddr_info_ok = :os
+          end
+        end
+      else
+        raise "unexpected enable_config() value"
+      end
+    }
   end
 
   if ipv6 and not getaddr_info_ok
@@ -702,9 +742,11 @@ SRC
     end
   end
 
-  have_func("pthread_create")
-  have_func("pthread_detach")
-  have_func("pthread_attr_setdetachstate")
+  parallel_checks do |c|
+    c.have_func("pthread_create")
+    c.have_func("pthread_detach")
+    c.have_func("pthread_attr_setdetachstate")
+  end
 
   $VPATH << '$(topdir)' << '$(top_srcdir)'
   create_makefile("socket")
