@@ -169,6 +169,7 @@ COMMONOBJS    = \
 		io.$(OBJEXT) \
 		io_buffer.$(OBJEXT) \
 		iseq.$(OBJEXT) \
+		iseq_binary.$(OBJEXT) \
 		load.$(OBJEXT) \
 		marshal.$(OBJEXT) \
 		math.$(OBJEXT) \

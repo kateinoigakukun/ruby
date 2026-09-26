@@ -7,8 +7,9 @@
   Copyright (C) 2004-2007 Koichi Sasada
 
   The instruction list (LINK_ANCHOR) representation and the helpers
-  shared by compile.c (the node tree compiler) and prism_compile.c
-  (the prism compiler).  This is not a public header.
+  shared by compile.c (the node tree compiler), prism_compile.c (the
+  prism compiler) and iseq_binary.c (the binary format dumper and
+  loader).  This is not a public header.
 
 **********************************************************************/
 
@@ -583,8 +584,10 @@ APPEND_LIST(ISEQ_ARG_DECLARE LINK_ANCHOR *const anc1, LINK_ANCHOR *const anc2)
 #define add_ensure_range rb_iseq_add_ensure_range
 #define add_trace_branch_coverage rb_iseq_add_trace_branch_coverage
 #define append_compile_error rb_iseq_append_compile_error
+#define array_to_idlist rb_iseq_array_to_idlist
 #define build_defined_rescue_iseq rb_iseq_build_defined_rescue_iseq
 #define can_add_ensure_iseq rb_iseq_can_add_ensure_iseq
+#define cdhash_aset rb_iseq_cdhash_aset
 #define cdhash_aset_if_missing rb_iseq_cdhash_aset_if_missing
 #define cdhash_new rb_iseq_cdhash_new
 #define compile_builtin_attr_symbol rb_iseq_compile_builtin_attr_symbol
@@ -597,6 +600,7 @@ APPEND_LIST(ISEQ_ARG_DECLARE LINK_ANCHOR *const anc1, LINK_ANCHOR *const anc2)
 #define get_lvar_level rb_iseq_get_lvar_level
 #define get_next_insn rb_iseq_get_next_insn
 #define get_prev_insn rb_iseq_get_prev_insn
+#define idlist_to_array rb_iseq_idlist_to_array
 #define iseq_block_param_id_p rb_iseq_block_param_id_p
 #define iseq_builtin_function_lookup rb_iseq_builtin_function_lookup
 #define iseq_calc_param_size rb_iseq_calc_param_size
@@ -619,6 +623,7 @@ APPEND_LIST(ISEQ_ARG_DECLARE LINK_ANCHOR *const anc1, LINK_ANCHOR *const anc2)
 #define new_trace_body rb_iseq_new_trace_body
 #define push_ensure_entry rb_iseq_push_ensure_entry
 #define update_lvar_state rb_iseq_update_lvar_state
+#define verify_call_cache rb_iseq_verify_call_cache
 
 void access_outer_variables(const rb_iseq_t *iseq, int level, ID id, bool write);
 void add_ensure_range(rb_iseq_t *iseq, struct ensure_range *erange, LABEL *lstart, LABEL *lend);
@@ -628,8 +633,10 @@ RBIMPL_ATTR_NORETURN()
 #endif
 RBIMPL_ATTR_FORMAT(RBIMPL_PRINTF_FORMAT, 3, 4)
 void append_compile_error(const rb_iseq_t *iseq, int line, const char *fmt, ...);
+ID *array_to_idlist(VALUE arr);
 void build_defined_rescue_iseq(rb_iseq_t *iseq, LINK_ANCHOR *const ret, const void *unused);
 bool can_add_ensure_iseq(const rb_iseq_t *iseq);
+void cdhash_aset(VALUE cdhash, VALUE key, VALUE val);
 void cdhash_aset_if_missing(VALUE cdhash, VALUE key, VALUE val);
 VALUE cdhash_new(size_t size);
 int compile_builtin_attr_symbol(rb_iseq_t *iseq, VALUE symbol);
@@ -642,6 +649,7 @@ int get_local_var_idx(const rb_iseq_t *iseq, ID id);
 int get_lvar_level(const rb_iseq_t *iseq);
 LINK_ELEMENT *get_next_insn(INSN *iobj);
 LINK_ELEMENT *get_prev_insn(INSN *iobj);
+VALUE idlist_to_array(const ID *ids);
 int iseq_block_param_id_p(const rb_iseq_t *iseq, ID id, int *pidx, int *plevel);
 const struct rb_builtin_function *iseq_builtin_function_lookup(const rb_iseq_t *iseq, const char *name);
 void iseq_calc_param_size(rb_iseq_t *iseq);
@@ -663,6 +671,8 @@ INSN *new_insn_send(rb_iseq_t *iseq, int line_no, int node_id, ID id, VALUE argc
 LABEL *new_label_body(rb_iseq_t *iseq, long line);
 TRACE *new_trace_body(rb_iseq_t *iseq, rb_event_flag_t event, long data);
 void push_ensure_entry(rb_iseq_t *iseq, struct iseq_compile_data_ensure_node_stack *enl, struct ensure_range *er, const void *const node);
+int rb_iseq_translate_threaded_code(rb_iseq_t *iseq);
 void update_lvar_state(const rb_iseq_t *iseq, int level, int idx);
+void verify_call_cache(rb_iseq_t *iseq);
 
 #endif /* RUBY_COMPILE_INTERN_H */

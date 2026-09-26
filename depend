@@ -90,6 +90,7 @@ inits.$(OBJEXT): {$(VPATH)}inits.c
 io.$(OBJEXT): {$(VPATH)}io.c
 io_buffer.$(OBJEXT): {$(VPATH)}io_buffer.c
 iseq.$(OBJEXT): {$(VPATH)}iseq.c
+iseq_binary.$(OBJEXT): {$(VPATH)}iseq_binary.c
 jit.$(OBJEXT): {$(VPATH)}jit.c
 load.$(OBJEXT): {$(VPATH)}load.c
 loadpath.$(OBJEXT): {$(VPATH)}loadpath.c
