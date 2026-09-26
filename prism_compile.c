@@ -1,3 +1,16 @@
+#include "ruby/internal/config.h"
+
+#include "internal.h"
+#include "internal/encoding.h"
+#include "internal/error.h"
+#include "internal/hash.h"
+#include "internal/io.h"
+#include "internal/re.h"
+#include "internal/ruby_parser.h"
+#include "internal/symbol.h"
+#include "ruby/util.h"
+#include "builtin.h"
+#include "compile_intern.h"
 #include "prism.h"
 #include "ruby/version.h"
 
@@ -366,12 +379,6 @@ parse_imaginary(const pm_imaginary_node_t *node)
     }
 
     return RB_OBJ_SET_SHAREABLE(rb_complex_raw(INT2FIX(0), imaginary_part));
-}
-
-static inline VALUE
-parse_string(const pm_scope_node_t *scope_node, const pm_string_t *string)
-{
-    return rb_enc_str_new((const char *) pm_string_source(string), pm_string_length(string), scope_node->encoding);
 }
 
 /**

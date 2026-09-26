@@ -181,6 +181,7 @@ COMMONOBJS    = \
 		pathname.$(OBJEXT) \
 		parse.$(OBJEXT) \
 		parser_st.$(OBJEXT) \
+		prism_compile.$(OBJEXT) \
 		proc.$(OBJEXT) \
 		process.$(OBJEXT) \
 		ractor.$(OBJEXT) \
