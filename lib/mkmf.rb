@@ -532,6 +532,10 @@ MSG
     end
     begin
       src = create_tmpsrc(src, &b)
+      if String === command and !src.start_with?(COMMON_HEADERS)
+        # the block changed the prelude the precompiled header stands for
+        command = command.sub(CONFTEST_PCH_INCLUDE, "")
+      end
       xsystem(command, **opts)
     ensure
       log_src(src)
@@ -556,6 +560,9 @@ MSG
 
   def link_command(ldflags, *opts)
     conf = link_config(ldflags, *opts)
+    # linker flags may change the compilation too: only plain links use
+    # the precompiled prelude
+    conf['CFLAGS'] += conftest_pch(conf) if ldflags.to_s.strip.empty?
     RbConfig::expand(TRY_LINK.dup, conf)
   end
 
@@ -568,9 +575,63 @@ MSG
 
   def cc_command(opt="")
     conf = cc_config(opt)
-    RbConfig::expand("$(CC) #$INCFLAGS #$CPPFLAGS #$CFLAGS #$ARCH_FLAG #{opt} -c #{CONFTEST_C}",
+    # extra options (a -Werror flag included) may change what the prelude
+    # compiles to or warns about: only plain compiles use the precompiled one
+    pch = opt.to_s.strip.empty? ? conftest_pch(conf) : ""
+    RbConfig::expand("$(CC) #$INCFLAGS #$CPPFLAGS #$CFLAGS #$ARCH_FLAG #{opt}#{pch} -c #{CONFTEST_C}",
                      conf)
   end
+
+  # The prelude of every C conftest (COMMON_HEADERS, ruby.h first) takes
+  # most of the time of a check. It is precompiled once per set of compiler
+  # flags and directory, and compiles and links of conftests include it with
+  # -include, which a GCC compatible compiler replaces with the precompiled
+  # header (conftest.c then includes the same headers again, which their
+  # guards make a no-op). The preprocessor (try_cpp) and C++ checks do not
+  # use it, and neither do checks with extra compiler options or linker
+  # flags, or whose block changed the prelude.
+  # The header is named outside "conftest*", which every check removes;
+  # create_makefile and the end of the process remove it.
+  CONFTEST_PCH = "mkmf-pch"
+  CONFTEST_PCH_INCLUDE = / -include #{CONFTEST_PCH}-\d+\.h(?=\s|\z)/
+  $conftest_pchs = {}     # directory => {flags => header path, or nil if it failed}
+  $conftest_pch_count = 0
+
+  # Returns the option including the precompiled prelude for the flags of
+  # +conf+, creating it the first time, or an empty string.
+  def conftest_pch(conf)
+    return "" unless CONFIG['GCC'] == 'yes' and !$universal
+    flags = RbConfig::expand("$(CC) #$INCFLAGS #$CPPFLAGS #$CFLAGS #$ARCH_FLAG", conf.dup)
+    pchs = $conftest_pchs[Dir.pwd] ||= {}
+    # removed behind our back
+    pchs.delete(flags) if (path = pchs[flags]) and !File.file?(path)
+    path = pchs.fetch(flags) do
+      # a few sets of flags per directory at most
+      if pchs.size >= 3 and old = pchs.shift.last
+        MakeMakefile.rm_f(old, "#{old}.gch")
+      end
+      header = "#{CONFTEST_PCH}-#{$conftest_pch_count += 1}.h"
+      created = create_conftest_pch(header, "#{flags} -x c-header -o #{header}.gch #{header}")
+      pchs[flags] = (File.expand_path(header) if created)
+    end
+    path ? " -include #{File.basename(path)}" : ""
+  end
+
+  # Writes the prelude to +header+ and precompiles it with +command+ into
+  # +header+.gch. Returns true on success; nothing is left behind otherwise.
+  def create_conftest_pch(header, command)
+    File.write(header, "#{COMMON_HEADERS}\n")
+    return true if system(command, [:out, :err] => File::NULL) and File.file?("#{header}.gch")
+    MakeMakefile.rm_f(header, "#{header}.gch")
+    false
+  end
+
+  # Removes the precompiled preludes of +dir+.
+  def conftest_pch_clean(dir = Dir.pwd)
+    ($conftest_pchs.delete(dir) || {}).each_value {|h| MakeMakefile.rm_f(h, "#{h}.gch") if h}
+  end
+
+  at_exit {$conftest_pchs.keys.each {|dir| MakeMakefile.conftest_pch_clean(dir)}}
 
   def cpp_config(opt)
     conf = cc_config(opt)
@@ -2406,6 +2467,7 @@ RULES
     libpath = $DEFLIBPATH|$LIBPATH
     message "creating Makefile\n"
     MakeMakefile.rm_f "#{CONFTEST}*"
+    conftest_pch_clean
     if CONFIG["DLEXT"] == $OBJEXT
       for lib in libs = $libs.split(' ')
         lib.sub!(/-l(.*)/, %%"lib\\1.#{$LIBEXT}"%)
