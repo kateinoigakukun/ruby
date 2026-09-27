@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 require 'mkmf'
 
+unless respond_to?(:parallel_checks, true)
+  # mkmf of Ruby 4.0 and earlier: run the checks one after another
+  def parallel_checks(*) yield MakeMakefile end
+end
+
 $defs << "-DJSON_DEBUG" if ENV.fetch("JSON_DEBUG", "0") != "0"
 
 if RUBY_ENGINE == 'truffleruby' && RUBY_ENGINE_VERSION < '40.0'
@@ -9,23 +14,29 @@ if RUBY_ENGINE == 'truffleruby' && RUBY_ENGINE_VERSION < '40.0'
   $defs << "-DJSON_TRUFFLERUBY_RB_CATCH_BUG"
 end
 
-have_func("rb_enc_interned_str", "ruby/encoding.h") # RUBY_VERSION >= 3.0
-have_func("rb_str_to_interned_str", "ruby.h") # RUBY_VERSION >= 3.0
-have_func("rb_hash_new_capa", "ruby.h") # RUBY_VERSION >= 3.2
-have_func("rb_hash_bulk_insert", "ruby.h") # Missing on TruffleRuby
-have_func("ruby_xfree_sized", "ruby.h") # RUBY_VERSION >= 4.1
+parallel_checks do |c|
+  c.have_func("rb_enc_interned_str", "ruby/encoding.h") # RUBY_VERSION >= 3.0
+  c.have_func("rb_str_to_interned_str", "ruby.h") # RUBY_VERSION >= 3.0
+  c.have_func("rb_hash_new_capa", "ruby.h") # RUBY_VERSION >= 3.2
+  c.have_func("rb_hash_bulk_insert", "ruby.h") # Missing on TruffleRuby
+  c.have_func("ruby_xfree_sized", "ruby.h") # RUBY_VERSION >= 4.1
 
-if have_header("x86intrin.h")
-  have_func("_lzcnt_u64", "x86intrin.h")
-end
+  c.then do
+    if have_header("x86intrin.h")
+      have_func("_lzcnt_u64", "x86intrin.h")
+    end
+  end
 
-if have_header("intrin.h")
-  have_func("__lzcnt64", "intrin.h")
-  have_func("_BitScanReverse64", "intrin.h")
-end
+  c.then do
+    if have_header("intrin.h")
+      have_func("__lzcnt64", "intrin.h")
+      have_func("_BitScanReverse64", "intrin.h")
+    end
+  end
 
-if RUBY_ENGINE == "ruby"
-  have_const("RUBY_TYPED_EMBEDDABLE", "ruby.h") # RUBY_VERSION >= 3.3
+  if RUBY_ENGINE == "ruby"
+    c.have_const("RUBY_TYPED_EMBEDDABLE", "ruby.h") # RUBY_VERSION >= 3.3
+  end
 end
 
 append_cflags("-std=c99")
