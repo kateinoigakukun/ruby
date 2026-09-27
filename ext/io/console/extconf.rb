@@ -1,16 +1,23 @@
 # frozen_string_literal: false
 require 'mkmf'
 
+unless respond_to?(:parallel_checks, true)
+  # mkmf of Ruby 4.0 and earlier: run the checks one after another
+  def parallel_checks(*) yield MakeMakefile end
+end
+
 # `--target-rbconfig` compatibility for Ruby 3.3 or earlier
 # See https://bugs.ruby-lang.org/issues/20345
 MakeMakefile::RbConfig ||= ::RbConfig
 
-have_func("rb_interned_str_cstr") # Ruby 3.0
-have_func("rb_ractor_local_storage_value_newkey") # Ruby 3.0
-have_func("rb_io_descriptor", "ruby/io.h") # Ruby 3.1
-have_func("rb_io_path", "ruby/io.h") # Ruby 3.3
-have_func("rb_io_closed_p", "ruby/io.h") # Ruby 3.3
-have_func("rb_io_open_descriptor", "ruby/io.h") # Ruby 3.3
+parallel_checks do |c|
+  c.have_func("rb_interned_str_cstr") # Ruby 3.0
+  c.have_func("rb_ractor_local_storage_value_newkey") # Ruby 3.0
+  c.have_func("rb_io_descriptor", "ruby/io.h") # Ruby 3.1
+  c.have_func("rb_io_path", "ruby/io.h") # Ruby 3.3
+  c.have_func("rb_io_closed_p", "ruby/io.h") # Ruby 3.3
+  c.have_func("rb_io_open_descriptor", "ruby/io.h") # Ruby 3.3
+end
 
 is_wasi = /wasi/ =~ MakeMakefile::RbConfig::CONFIG["platform"]
 # `ok` can be `true`, `false`, or `nil`:
@@ -36,33 +43,37 @@ else
 end if ok
 case ok
 when true
-  have_header("sys/ioctl.h") if hdr
-  # rb_check_hash_type: 1.9.3
-  # rb_io_get_write_io: 1.9.1
-  # rb_cloexec_open: 2.0.0
-  # rb_funcallv: 2.1.0
-  # RARRAY_CONST_PTR: 2.1.0
-  # rb_sym2str: 2.2.0
-  if have_macro("HAVE_RUBY_FIBER_SCHEDULER_H")
-    $defs << "-D""HAVE_RB_IO_WAIT=1"
-  elsif have_func("rb_scheduler_timeout") # Ruby 3.0 (internal)
-    have_func("rb_io_wait") # Ruby 3.0
-  end
-  have_func("rb_category_warn")
-  have_const("RB_WARN_CATEGORY_DEPRECATED")
-  unless win32
-    if have_func("ttyname_r")
-      ret = checking_for("type of ttyname_r()", "%s") {try_link(<<~C) ? "int" : "char *"}
-          #{cpp_include %<unistd.h>}
-          int t(void) {char name[1024]; return ttyname_r(0, name, sizeof(name)) % 1024;}
-          #{MAIN_DOES_NOTHING('t')}
-        C
-      $defs << "-DTTYNAME_R_RETURNS_#{ret.tr_cpp}"
-    else
-      have_func("ttyname")
+  parallel_checks do |c|
+    c.have_header("sys/ioctl.h") if hdr
+    # rb_check_hash_type: 1.9.3
+    # rb_io_get_write_io: 1.9.1
+    # rb_cloexec_open: 2.0.0
+    # rb_funcallv: 2.1.0
+    # RARRAY_CONST_PTR: 2.1.0
+    # rb_sym2str: 2.2.0
+    c.then do
+      if have_macro("HAVE_RUBY_FIBER_SCHEDULER_H")
+        $defs << "-D""HAVE_RB_IO_WAIT=1"
+      elsif have_func("rb_scheduler_timeout") # Ruby 3.0 (internal)
+        have_func("rb_io_wait") # Ruby 3.0
+      end
     end
+    c.have_func("rb_category_warn")
+    c.have_const("RB_WARN_CATEGORY_DEPRECATED")
+    c.then do
+      if have_func("ttyname_r")
+        ret = checking_for("type of ttyname_r()", "%s") {try_link(<<~C) ? "int" : "char *"}
+            #{cpp_include %<unistd.h>}
+            int t(void) {char name[1024]; return ttyname_r(0, name, sizeof(name)) % 1024;}
+            #{MAIN_DOES_NOTHING('t')}
+          C
+        $defs << "-DTTYNAME_R_RETURNS_#{ret.tr_cpp}"
+      else
+        have_func("ttyname")
+      end
+    end unless win32
+    c.have_func("rb_prepend_module") # not exported by TruffleRuby
   end
-  have_func("rb_prepend_module") # not exported by TruffleRuby
   vk_tool = find_executable("gperf")
   create_makefile("io/console") {|conf|
     conf << "###\n" "all: # the default target\n"
