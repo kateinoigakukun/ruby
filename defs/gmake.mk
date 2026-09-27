@@ -620,3 +620,31 @@ $(foreach r,$(RIPPER_SRCS),$(eval $(value r): | $(value ripper_src))\
 	$(eval ripper_src := $(value r)))
 ripper_srcs: $(ripper_src)
 endif
+
+# ripper's generated sources need only the base ruby, as `make srcs` shows.
+# Make them in the extension's build directory, by the rules and with the
+# directories its Makefile uses, before the extensions are configured: then
+# compiling them need not wait for miniruby, libruby and the configuration of
+# the extensions, and the extension's Makefile finds them up to date.
+ifeq ($(HAVE_BASERUBY),yes)
+ripper_top_srcdir := $(if $(filter /%,$(srcdir))$(findstring :,$(srcdir)),$(srcdir),../../$(srcdir))
+
+ext/configure-ext.mk: ripper-srcs-early
+
+.PHONY: ripper-srcs-early
+ripper-srcs-early:
+	$(Q) $(MAKEDIRS) ext/ripper
+	$(Q) $(CHDIR) ext/ripper && \
+	$(CAT_DEPEND) $(ripper_top_srcdir)/ext/ripper/depend | \
+	$(exec) $(MAKE) -f - $(mflags) \
+		Q=$(Q) ECHO=$(ECHO) RM="$(RM1)" topdir=../.. \
+		top_srcdir="$(ripper_top_srcdir)" srcdir='$$(top_srcdir)/ext/ripper' \
+		VPATH='$$(srcdir):$$(topdir):$$(top_srcdir)' \
+		RUBY="$(BASERUBY)" BASERUBY="$(BASERUBY)" PATH_SEPARATOR="$(PATH_SEPARATOR)" LANG=C \
+		src
+
+# In case the extension has not been configured yet
+distclean-ext realclean-ext::
+	-$(Q)$(RM) $(addprefix ext/ripper/,ripper.y $(notdir $(RIPPER_SRCS)))
+	-$(Q)$(RMDIRS) ext/ripper 2> $(NULL) || $(NULLCMD)
+endif
