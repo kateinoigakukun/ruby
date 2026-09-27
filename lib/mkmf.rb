@@ -812,18 +812,55 @@ MSG
     end
   end
 
+  # Conftests are thrown away, so debugging information in them is waste:
+  # with a GCC compatible compiler, conftest commands leave out the
+  # configured debugging flags (+debugflags+, which +cflags+ includes), and
+  # links do not copy the debugging information of the libraries (a static
+  # libruby, mostly) into the executable. The flags given to a check, as
+  # try_cflags and try_ldflags do, are kept, and so are all the configured
+  # flags for such a check: they may depend on each other. The preprocessor
+  # keeps them too: -g3 makes GCC output the macro definitions, which
+  # egrep_cpp may match.
+  def conftest_config(debug = false)
+    config = RbConfig::CONFIG
+    return config if debug or CONFIG['GCC'] != 'yes'
+    return config if !(debugflags = CONFIG['debugflags']) or debugflags.empty?
+    # expand again the variables that refer to debugflags, directly or not
+    names = %w[debugflags]
+    begin
+      ref = /\$[({]#{Regexp.union(names)}[:)}]/
+      refs = CONFIG.select {|name, val| ref =~ val and !names.include?(name)}.keys
+    end until names.concat(refs) and refs.empty?
+    conf = config.merge(names.to_h {|name| [name, CONFIG[name].dup]})
+    conf['debugflags'] = ''
+    names.each {|name| RbConfig.expand(conf[name], conf)}
+    conf
+  end
+
+  # The linker option to leave debugging information out of conftest
+  # executables. GNU ld, gold, lld and mold take -S (--strip-debug). The
+  # Darwin linker documents -S too, but it never copies DWARF into
+  # executables; the linkers of AIX and Solaris differ.
+  CONFTEST_STRIP_LDFLAGS =
+    if CONFIG['GCC'] == 'yes' and /darwin|aix|solaris/ !~ RUBY_PLATFORM
+      "-Wl,-S"
+    end
+
   def link_config(ldflags, opt="", libpath=$DEFLIBPATH|$LIBPATH)
-    conf = RbConfig::CONFIG.merge('hdrdir' => $hdrdir.quote,
-                                  'src' => "#{conftest_source}",
-                                  'arch_hdrdir' => $arch_hdrdir.quote,
-                                  'top_srcdir' => $top_srcdir.quote,
-                                  'INCFLAGS' => "#$INCFLAGS",
-                                  'CPPFLAGS' => "#$CPPFLAGS",
-                                  'CFLAGS' => "#$CFLAGS",
-                                  'ARCH_FLAG' => "#$ARCH_FLAG",
-                                  'LDFLAGS' => "#$LDFLAGS #{ldflags}",
-                                  'LOCAL_LIBS' => "#$LOCAL_LIBS #$libs",
-                                  'LIBS' => "$(LIBRUBYARG) #{opt} #$LIBS")
+    plain = ldflags.to_s.strip.empty?
+    ldflags = "#{ldflags} #{CONFTEST_STRIP_LDFLAGS}" if plain and CONFTEST_STRIP_LDFLAGS
+    conf = conftest_config(!plain).merge(
+      'hdrdir' => $hdrdir.quote,
+      'src' => "#{conftest_source}",
+      'arch_hdrdir' => $arch_hdrdir.quote,
+      'top_srcdir' => $top_srcdir.quote,
+      'INCFLAGS' => "#$INCFLAGS",
+      'CPPFLAGS' => "#$CPPFLAGS",
+      'CFLAGS' => "#$CFLAGS",
+      'ARCH_FLAG' => "#$ARCH_FLAG",
+      'LDFLAGS' => "#$LDFLAGS #{ldflags}",
+      'LOCAL_LIBS' => "#$LOCAL_LIBS #$libs",
+      'LIBS' => "$(LIBRUBYARG) #{opt} #$LIBS")
     conf['LIBPATH'] = libpathflag(libpath.map {|s| RbConfig::expand(s.dup, conf)})
     conf
   end
@@ -836,10 +873,11 @@ MSG
     RbConfig::expand(conftest_sub(TRY_LINK.dup), conf)
   end
 
-  def cc_config(opt="")
-    conf = RbConfig::CONFIG.merge('hdrdir' => $hdrdir.quote, 'srcdir' => $srcdir.quote,
-                                  'arch_hdrdir' => $arch_hdrdir.quote,
-                                  'top_srcdir' => $top_srcdir.quote)
+  def cc_config(opt="", debug: !opt.to_s.strip.empty?)
+    conf = conftest_config(debug).merge(
+      'hdrdir' => $hdrdir.quote, 'srcdir' => $srcdir.quote,
+      'arch_hdrdir' => $arch_hdrdir.quote,
+      'top_srcdir' => $top_srcdir.quote)
     conf
   end
 
@@ -904,7 +942,7 @@ MSG
   at_exit {$conftest_pchs.keys.each {|dir| MakeMakefile.conftest_pch_clean(dir)}}
 
   def cpp_config(opt)
-    conf = cc_config(opt)
+    conf = cc_config(opt, debug: true)
     if $universal and (arch_flag = conf['ARCH_FLAG']) and !arch_flag.empty?
       conf['ARCH_FLAG'] = arch_flag.gsub(/(?:\G|\s)-arch\s+\S+/, '')
     end
