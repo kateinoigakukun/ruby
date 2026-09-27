@@ -92,6 +92,7 @@ CPPOUTFLAG = >
 ARCH_FLAG = @ARCH_FLAG@
 CFLAGS_NO_ARCH = @CFLAGS@
 CFLAGS = $(CFLAGS_NO_ARCH) $(ARCH_FLAG)
+CCDLFLAGS = @CCDLFLAGS@
 cflags = @cflags@
 optflags = @optflags@
 debugflags = @debugflags@

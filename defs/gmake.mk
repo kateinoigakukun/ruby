@@ -643,8 +643,69 @@ ripper-srcs-early:
 		RUBY="$(BASERUBY)" BASERUBY="$(BASERUBY)" PATH_SEPARATOR="$(PATH_SEPARATOR)" LANG=C \
 		src
 
+# ripper.c is also the longest compile among the extensions, and it would
+# still start only once every extension is configured.  Compile it early as
+# well, in the extension's build directory, by the rules of the dependency
+# file its Makefile will include (.deps/ext/ripper/depend, which mkdepend.rb
+# makes with the base ruby here as configure-ext.mk makes it with miniruby)
+# and with the command and the flags mkmf writes into that Makefile
+# (lib/mkmf.rb, configuration and create_header; ext/ripper/extconf.rb), so
+# that the object is the one the Makefile would make and the Makefile finds
+# it up to date.  extconf.h is written, when it is missing, before the
+# extensions are configured: in an in-tree build mkmf lists the headers it
+# finds in the extension's directory (HDRS), as it does when it configures
+# the extension again.  If extconf.rb writes another extconf.h, the Makefile
+# compiles ripper.o again.  Not when the extensions are linked statically
+# (another CCDLFLAGS and extconf.h) or when configure's arguments choose the
+# extensions or name ripper: the Makefile compiles it then, as before.
+ripper_obj_early_args := $(EXTSTATIC) $(configure_args) $(CONFIGURE_ARGS)
+ifeq ($(strip $(EXTSTATIC))$(findstring -ext,$(ripper_obj_early_args))$(findstring ripper,$(ripper_obj_early_args)),)
+
+ext/configure-ext.mk: ripper-extconf-h-early
+build-ext: ripper-obj-early
+
+.PHONY: ripper-extconf-h-early
+ripper-extconf-h-early:
+	$(Q) $(MAKEDIRS) ext/ripper
+	$(Q) test -f ext/ripper/extconf.h || \
+	printf '%s\n' '#ifndef EXTCONF_H' '#define EXTCONF_H' '#define RIPPER 1' '#endif' > ext/ripper/extconf.h
+
+define ripper_obj_early_mk
+hdrdir = $(top_srcdir)/include
+arch_hdrdir = $(extout)/include/$(arch)
+VPATH = $(srcdir):$(arch_hdrdir)/ruby:$(hdrdir)/ruby:$(topdir):$(top_srcdir)
+RUBY_EXTCONF_H = extconf.h
+CFLAGS   = $(CCDLFLAGS) $(cflags) $(ARCH_FLAG)
+INCFLAGS = -I. -I$(arch_hdrdir) -I$(hdrdir) -I$(srcdir) -I$(topdir) -I$(top_srcdir)
+CPPFLAGS = -DRUBY_EXTCONF_H=\"$(RUBY_EXTCONF_H)\"  $(DEFS) $(cppflags)
+ripper.o: $(RUBY_EXTCONF_H)
+.c.o:
+	$(ECHO) compiling $(<)
+	$(Q) $(CC) $(INCFLAGS) $(CPPFLAGS) $(CFLAGS) $(COUTFLAG)$@ -c $(CSRCFLAG)$<
+endef
+
+.PHONY: ripper-obj-early
+ripper-obj-early: export RIPPER_OBJ_EARLY_MK = $(value ripper_obj_early_mk)
+ripper-obj-early: ripper-srcs-early ripper-extconf-h-early incs parse.h probes.h lex.c
+	$(Q) $(BASERUBY) $(tooldir)/mkdepend.rb --root=$(srcdir) \
+		--thread-model=$(THREAD_MODEL) --output=.deps $(srcdir)/ext/ripper/depend
+	$(Q) $(CHDIR) ext/ripper && \
+	{ printf '%s\n' "$$RIPPER_OBJ_EARLY_MK"; \
+	  sed -e 's/{\$$([^(){}]*)[^{}]*}//g' ../../.deps/ext/ripper/depend; } | \
+	$(exec) $(MAKE) -f - $(mflags) \
+		Q=$(Q) ECHO=$(ECHO) RM="$(RM1)" topdir=../.. \
+		top_srcdir="$(ripper_top_srcdir)" srcdir='$$(top_srcdir)/ext/ripper' \
+		extout='$$(topdir)/$(EXTOUT)' arch="$(arch)" \
+		CC="$(CC)" COUTFLAG="$(COUTFLAG)" CSRCFLAG="$(CSRCFLAG)" \
+		CCDLFLAGS="$(CCDLFLAGS)" ARCH_FLAG="$(ARCH_FLAG)" DEFS="$(DEFS)" \
+		cflags='$(value cflags)' optflags="$(optflags)" debugflags="$(debugflags)" \
+		warnflags="$(strip $(warnflags))" cppflags="$(cppflags)" \
+		RUBY="$(BASERUBY)" BASERUBY="$(BASERUBY)" PATH_SEPARATOR="$(PATH_SEPARATOR)" LANG=C \
+		ripper.o
+endif
+
 # In case the extension has not been configured yet
 distclean-ext realclean-ext::
-	-$(Q)$(RM) $(addprefix ext/ripper/,ripper.y $(notdir $(RIPPER_SRCS)))
+	-$(Q)$(RM) $(addprefix ext/ripper/,ripper.y $(notdir $(RIPPER_SRCS)) ripper.o extconf.h)
 	-$(Q)$(RMDIRS) ext/ripper 2> $(NULL) || $(NULLCMD)
 endif
