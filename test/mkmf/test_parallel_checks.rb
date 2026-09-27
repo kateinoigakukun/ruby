@@ -76,16 +76,31 @@ class TestMkmfParallelChecks < TestMkmf
   end
 
   def test_jobs
-    makeflags, makelevel = ENV["MAKEFLAGS"], ENV["MAKELEVEL"]
+    makeflags, makelevel, mflags = ENV["MAKEFLAGS"], ENV["MAKELEVEL"], $mflags
     ENV["MAKEFLAGS"], ENV["MAKELEVEL"] = " -j3 --jobserver-auth=3,4", "1"
     assert_equal(3, parallel_checks_jobs)
     ENV["MAKEFLAGS"] = "k"
     assert_equal(1, parallel_checks_jobs)
+    default = parallel_checks_default_jobs
+    assert_operator(default, :>=, 1)
+    assert_operator(default, :<=, 8)
     ENV["MAKEFLAGS"] = "k -j"
-    assert_operator(parallel_checks_jobs, :>=, 1)
+    assert_equal(default, parallel_checks_jobs)
+    # GNU make 3.81 to 4.1 do not pass the number to sub-makes
+    ENV["MAKEFLAGS"] = " --jobserver-fds=3,4 -j"
+    assert_equal(default, parallel_checks_jobs)
+    ENV["MAKEFLAGS"] = "k --jobserver-auth=fifo:/tmp/GMfifo1"
+    assert_equal(default, parallel_checks_jobs)
+    ENV["MAKEFLAGS"] = "k"
+    $mflags = %w[-j2]           # extmk.rb --mflags=-j2
+    assert_equal(2, parallel_checks_jobs)
+    ENV["MAKEFLAGS"] = " -j --jobserver-fds=3,4"
+    assert_equal(2, parallel_checks_jobs)
+    $mflags = mflags
     ENV["MAKEFLAGS"], ENV["MAKELEVEL"] = nil, nil
-    assert_operator(parallel_checks_jobs, :<=, 8)
+    assert_equal(default, parallel_checks_jobs)
   ensure
+    $mflags = mflags
     ENV["MAKEFLAGS"], ENV["MAKELEVEL"] = makeflags, makelevel
   end
 

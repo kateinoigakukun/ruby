@@ -1453,8 +1453,9 @@ SRC
   # among them; if the configuration changes, an error is raised.
   #
   # Up to +jobs+ checks run at once; the default is the <code>-j</code>
-  # option of make when run by make, or the number of processors, at most
-  # 8.  The checks run one after another when +jobs+ is 1, and on
+  # option of make when run by make (1 without <code>-j</code>), or the
+  # number of processors, at most 8, when make does not tell the number
+  # or when not run by make (4 if it cannot be found out).  The checks run one after another when +jobs+ is 1, and on
   # platforms and compilers where it is not supported.
   def parallel_checks(jobs = nil)
     recorder = ParallelChecks::Recorder.new(self)
@@ -1477,15 +1478,22 @@ SRC
 
   def parallel_checks_jobs
     flags = [ENV["MAKEFLAGS"], *$mflags].join(" ")
-    if /(?:\A|\s)(?:-j|--jobs=?)(\d*)(?=\s|\z)/ =~ flags
-      return $1.to_i if $1.to_i > 0 # otherwise no limit
-    elsif ENV["MAKELEVEL"]
-      return 1                  # make without -j
+    jobs = flags.scan(/(?:\A|\s)(?:-j|--jobs=?)(\d*)(?=\s|\z)/).map {|n,| n.to_i}
+    if (n = jobs.find(&:positive?))
+      return n
+    elsif jobs.empty? and !/(?:\A|\s)--jobserver-(?:auth|fds)=/.match?(flags)
+      return 1 if ENV["MAKELEVEL"] # make without -j
     end
+    # -j without a number: no limit, or a jobserver whose size GNU make
+    # before 4.2 does not tell; or not run by make.
+    parallel_checks_default_jobs
+  end
+
+  def parallel_checks_default_jobs
     require 'etc'
     [Etc.nprocessors, 8].min
   rescue LoadError              # miniruby
-    1
+    4
   end
 
   # :startdoc:
