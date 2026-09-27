@@ -366,7 +366,23 @@ ext/configure-ext.mk: $(PREP) all-incs $(MKFILES) $(RBCONFIG) $(LIBRUBY) \
 	    $(srcdir)/template/$(@F).tmpl --srcdir="$(srcdir)" \
 	    --miniruby="$(MINIRUBY)" --script-args='$(SCRIPT_ARGS)' \
 	    --thread-model="$(THREAD_MODEL)" --gnumake=$(gnumake) \
+	    --test-exts-in-all=$(TEST_EXTS_IN_ALL) \
 	    $(yes_cross_compiling:yes=--without-ext=-test-)
+
+# The extensions under ext/-test-/ are used only by the tests.  They are
+# configured and built by `test-exts`, which the targets running them
+# (`test-all` and `test-ruby`) depend on, not by `exts`.  Set
+# TEST_EXTS_IN_ALL=yes to build them with the other extensions in `all`.
+TEST_EXTS_IN_ALL = no
+TEST_EXTS_MK = test-exts.mk
+$(TEST_EXTS_MK): $(EXTS_MK)
+	$(Q)$(MAKE) -f ext/configure-ext.mk $(mflags) V=$(V) EXTSTATIC=$(EXTSTATIC) \
+		gnumake=$(gnumake) MINIRUBY="$(MINIRUBY)" \
+		EXTLDFLAGS="$(EXTLDFLAGS)" srcdir="$(srcdir)" test-exts
+	$(ECHO) generating makefile $@
+	$(Q)$(MINIRUBY) $(tooldir)/generic_erb.rb -o $@ \
+	    $(srcdir)/template/exts.mk.tmpl --gnumake=$(gnumake) \
+	    --configure-exts=ext/configure-ext.mk --test-exts
 
 configure-ext: $(EXTS_MK)
 
@@ -378,6 +394,13 @@ build-ext: $(EXTS_MK)
 
 exts-note: $(EXTS_MK)
 	$(Q)$(MAKE) $(EXTS_NOTE)
+
+# Built after `exts`, since linking the ruby programs with statically
+# linked extensions may relink the shared libruby these link against.
+test-exts: exts $(TEST_EXTS_MK)
+	$(Q)$(MAKE) -f $(TEST_EXTS_MK) $(mflags) libdir="$(libdir)" \
+	    BASERUBY="$(BASERUBY)" MINIRUBY="$(MINIRUBY)"
+	$(Q)$(MAKE) -f $(TEST_EXTS_MK) $(mflags) RUBY="$(MINIRUBY)" top_srcdir="$(srcdir)" note
 
 ext/extinit.c: $(srcdir)/template/extinit.c.tmpl $(PREP)
 	$(MAKEDIRS) $(@D)
@@ -812,7 +835,7 @@ clean-ext::
 	-$(Q)$(RM) ext/extinit.$(OBJEXT)
 
 distclean-ext realclean-ext::
-	-$(Q)$(RM) $(EXTS_MK) ext/extinit.* ext/configure-ext.mk
+	-$(Q)$(RM) $(EXTS_MK) $(TEST_EXTS_MK) ext/extinit.* ext/configure-ext.mk
 	-$(Q)$(RMDIR) ext 2> $(NULL) || $(NULLCMD)
 
 clean-enc distclean-enc realclean-enc: PHONY
@@ -955,7 +978,7 @@ test: test-short
 
 # Separate to skip updating encs and exts by `make -o test-precheck`
 # for GNU make.
-test-precheck: $(ENCSTATIC:static=lib)encs exts PHONY $(DOT_WAIT)
+test-precheck: $(ENCSTATIC:static=lib)encs exts test-exts PHONY $(DOT_WAIT)
 yes-test-all-precheck: programs $(DOT_WAIT) test-precheck yes-fake
 
 PRECHECK_TEST_ALL = yes-test-all-precheck
@@ -982,7 +1005,7 @@ no-test-almost: no-test-all
 
 test-ruby: $(TEST_RUNNABLE)-test-ruby
 no-test-ruby: PHONY
-yes-test-ruby: prog encs PHONY
+yes-test-ruby: prog encs test-exts PHONY
 	$(gnumake_recursive)$(RUNRUBY) "$(TESTSDIR)/runner.rb" $(TEST_EXCLUDES) $(TESTOPTS) -- ruby -ext-
 
 extconf: $(PREP)

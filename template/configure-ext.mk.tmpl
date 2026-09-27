@@ -8,6 +8,7 @@ ECHO = $(ECHO1:0=@echo)
 <%
 srcdir = miniruby = script_args = thread_model = nil
 nmake = false
+test_exts_in_all = false
 with_exts = []
 without_exts = []
 opt = OptionParser.new do |o|
@@ -18,21 +19,46 @@ opt = OptionParser.new do |o|
   o.on('--gnumake=BOOL') {|v| nmake = v != "yes"}
   o.on('--with-ext=ext[,...]', Array) {|v| with_exts.concat(v)}
   o.on('--without-ext=ext[,...]', Array) {|v| without_exts.concat(v)}
+  o.on('--test-exts-in-all=BOOL') {|v| test_exts_in_all = v == "yes"}
   o.order!(ARGV)
 end
 srcdir ||= File.dirname(File.dirname(__FILE__))
 script_args ||= ""
 
+# Test extensions named explicitly by the --with-ext option of configure
+# or CONFIGURE_ARGS, e.g. --with-ext=-test-/cxxanyargs,+ to check the
+# public headers with C++, are wanted by `all`.
+require './rbconfig'
+require 'shellwords'
+configured_args = RbConfig::CONFIG["configure_args"].shellsplit
+configured_args.concat(ENV["CONFIGURE_ARGS"].shellsplit) if ENV["CONFIGURE_ARGS"]
+configured_args.each do |arg|
+  if /\A--with-ext(?:ensions)?=/ =~ arg
+    test_exts_in_all ||= $'.split(",").any? {|w| w.start_with?("-")}
+  end
+end
+
 filter = proc do |ext|
   next false unless with_exts.empty? or !with_exts.any? {|w| File.fnmatch?(w, ext)}
   without_exts.empty? or !without_exts.any? {|w| File.fnmatch?(w, ext)}
 end
+# Directories whose names start with "-" (ext/-test-) hold extensions
+# that are used only by the tests and are never installed.  They are
+# configured by the `test-exts` target instead of `exts`, so that `all`
+# does not build them, unless `--test-exts-in-all=yes` is given or
+# --with-ext names any of them.
+ext_dirs = Dir.glob("ext/**/extconf.rb", base: srcdir).filter_map do |d|
+  d if filter[File.basename(d = d[%r[\Aext/[^/]+]])]
+end.uniq
+test_ext_dirs = test_exts_in_all ? [] : ext_dirs.select {|d| File.basename(d).start_with?("-")}
 exts = {
   exts: [
     "--extstatic $(EXTSTATIC)",
-    Dir.glob("ext/**/extconf.rb", base: srcdir).filter_map do |d|
-      d if filter[File.basename(d = d[%r[\Aext/[^/]+]])]
-    end.uniq
+    ext_dirs - test_ext_dirs
+  ],
+  "test-exts": [
+    "--extstatic $(EXTSTATIC)",
+    test_ext_dirs
   ],
   gems: [
     "--no-extstatic",
@@ -57,6 +83,7 @@ EXTMK_ARGS = $(SCRIPT_ARGS) --gnumake=$(gnumake) --extflags="$(EXTLDFLAGS)" \
 
 all: exts gems
 exts: dependencies
+test-exts: dependencies
 gems:
 
 dependencies:
@@ -73,5 +100,5 @@ dependencies:
 %   end
 % end
 
-.PHONY: FORCE all dependencies exts gems
+.PHONY: FORCE all dependencies exts gems test-exts
 FORCE:

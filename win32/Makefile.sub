@@ -1272,6 +1272,7 @@ realclean-prism: distclean-prism
 
 ext/clean.mk ext/distclean.mk ext/realclean.mk::
 	$(Q)if exist $(EXTS_MK) $(MAKE) $(MFLAGS) -k -f $(EXTS_MK) top_srcdir=$(srcdir) $(*F)
+	$(Q)if exist $(TEST_EXTS_MK) $(MAKE) $(MFLAGS) -k -f $(TEST_EXTS_MK) top_srcdir=$(srcdir) $(*F)
 
 ext/clean.sub ext/distclean.sub ext/realclean.sub \
 .bundle/clean.sub .bundle/distclean.sub .bundle/realclean.sub::

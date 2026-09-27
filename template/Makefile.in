@@ -593,6 +593,7 @@ ext/realclean.sub:: ext/realclean.mk
 
 ext/clean.mk ext/distclean.mk ext/realclean.mk::
 	-$(Q) if [ -f $(EXTS_MK) ]; then exec $(MAKE) -f $(EXTS_MK) $(@F:.mk=); fi
+	-$(Q) if [ -f $(TEST_EXTS_MK) ]; then exec $(MAKE) -f $(TEST_EXTS_MK) $(@F:.mk=); fi
 
 ext/clean:: ext/clean.sub
 ext/distclean:: ext/distclean.sub

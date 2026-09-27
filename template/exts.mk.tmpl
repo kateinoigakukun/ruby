@@ -14,19 +14,32 @@ rubies = []
 exeext = RbConfig::CONFIG['EXEEXT']
 gnumake = false
 confexts = nil
+test_exts = false
 opt = OptionParser.new do |o|
   o.on('--gnumake=BOOL') {|v| gnumake = v == 'yes'}
   o.on('--configure-exts=FILE') {|v| confexts = v}
+  # Generate the makefile for the `test-exts` group of configure-ext.mk
+  # (ext/-test-) instead of the one for `exts` and `gems`.
+  o.on('--test-exts') {test_exts = true}
   o.order!(ARGV)
 end
-confexts &&= File.read(confexts).scan(/^(?:ext|gem)s: (.*\.mk)/).flatten rescue nil
-confexts ||= []
+confexts &&= File.read(confexts) rescue nil
+testexts = confexts ? confexts.scan(/^test-exts: (.*\.mk)/).flatten : []
+confexts = confexts ? confexts.scan(/^(?:ext|gem)s: (.*\.mk)/).flatten : []
 macros["old_extensions"] = []
 distclean = []
 
 contpat = /(?>(?>[^\\\n]|\\.)*\\\n)*(?>[^\\\n]|\\.)*/
 Dir.glob("{ext,.bundle/gems}/*/exts.mk") do |e|
-  gem = e.start_with?(".bundle/gems/")
+  if test_exts
+    next unless testexts.include?(e)
+  else
+    # The test extensions are not old ones, but belong to the other makefile.
+    next if testexts.include?(e)
+  end
+  # The test extensions are never linked statically, so they need not
+  # remake the ruby programs.
+  gem = test_exts || e.start_with?(".bundle/gems/")
   dir = File.dirname(e)
   s = File.read(e)
   s.scan(/^(extensions|SUBMAKEOPTS|EXT[A-Z]+|MFLAGS|MESSAGE_(?:BEGIN|END)|NOTE_[A-Z]+)[ \t]*=[ \t]*(#{contpat})$/o) do |n, v|
@@ -35,7 +48,7 @@ Dir.glob("{ext,.bundle/gems}/*/exts.mk") do |e|
       distclean << dir if n == "extensions"
       next
     end
-    n = "old_extensions" if n == "extensions" and !confexts.include?(e)
+    n = "old_extensions" if n == "extensions" and !test_exts and !confexts.include?(e)
     v = v.split
     m = macros[n] ||= []
     case n
@@ -130,11 +143,14 @@ end
 
 all:
 static:
+note:
 
+% unless test_exts
 clean:
 	-$(Q)$(RM) ext/extinit.<%= objext %>
 distclean:
 	-$(Q)$(RM) ext/extinit.c
+% end
 
 % deps.each do |d|
 <%= d %>
