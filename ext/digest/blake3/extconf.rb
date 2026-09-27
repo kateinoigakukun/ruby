@@ -3,6 +3,11 @@
 
 require "mkmf"
 
+unless respond_to?(:parallel_checks, true)
+  # mkmf of Ruby 4.0 and earlier: run the checks one after another
+  def parallel_checks(*) yield MakeMakefile end
+end
+
 # BLAKE3 build configuration.
 #
 # The binding is always built from the portable C code (blake3.c,
@@ -48,15 +53,30 @@ when /\A(x86_64|amd64|x64)\z/i
     ["blake3_avx512", "AVX-512", ["-mavx512f -mavx512vl", "-arch:AVX512"], "BLAKE3_NO_AVX512"],
   ]
 
-  x86_backends.each do |obj, name, flags, no_macro|
-    [nil, *flags].any? do |flag|
-      if blake3_have_isa?(name, flag, %{#include "#{$srcdir}/#{obj}.c"\n})
-        objs << obj
-        simd_cflags[obj] = flag
-        true
+  # The backends are probed independently, concurrently where mkmf can, so
+  # the -DBLAKE3_NO_* of a backend not compiled is added only after all of
+  # them are probed.  (yield_self, as Ruby 2.5 has no `then`.)
+  found = {}
+  parallel_checks do |c|
+    x86_backends.each do |obj, name, flags, _|
+      c.yield_self do
+        [nil, *flags].any? do |flag|
+          if blake3_have_isa?(name, flag, %{#include "#{$srcdir}/#{obj}.c"\n})
+            found[obj] = flag
+            true
+          end
+        end
       end
-    end or
+    end
+  end
+
+  x86_backends.each do |obj, _, _, no_macro|
+    if found.key?(obj)
+      objs << obj
+      simd_cflags[obj] = found[obj]
+    else
       blake3_disable(no_macro)
+    end
   end
 when /\A(aarch64|arm64)\z/i
   # NEON is part of the AArch64 baseline, so no runtime detection or special
