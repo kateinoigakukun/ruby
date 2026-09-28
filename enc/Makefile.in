@@ -26,6 +26,8 @@ EXEEXT = @EXEEXT@
 TIMESTAMPDIR  = $(EXTOUT)/.timestamp
 ENC_TRANS_D   = $(TIMESTAMPDIR)/enc-trans.time
 ENC_TRANS_SO_D = $(TIMESTAMPDIR)/enc-trans-$(arch).time
+ENC_DSYMS_D = $(TIMESTAMPDIR)/enc-$(arch).dSYM.time
+TRANS_DSYMS_D = $(TIMESTAMPDIR)/trans-$(arch).dSYM.time
 
 BUILTIN_ENCS	= enc/ascii.c enc/us_ascii.c\
 		  enc/unicode.c enc/utf_8.c
@@ -58,7 +60,9 @@ DEFS = @DEFS@
 CPPFLAGS = @CPPFLAGS@ -DONIG_ENC_REGISTER=rb_enc_register
 LDFLAGS = @LDFLAGS@
 LDSHARED = @LDSHARED@
-POSTLINK = @POSTLINK@
+# (the debug symbols are made by one dsymutil for many libraries: see enc/depend)
+POSTLINK = @POSTLINK_NODSYM@
+DSYMUTIL = @DSYMUTIL@
 ldflags  = $(LDFLAGS)
 dldflags = @DLDFLAGS@
 extdldflags = @EXTDLDFLAGS@

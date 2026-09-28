@@ -45,6 +45,7 @@
 %   pathrep = proc {|path| path}
 % end
 % ignore_error = $ignore_error
+% dsyms = (CONFIG["DSYMUTIL"] || ":") != ":"
 
 VPATH = <%=%w[$(arch_hdrdir)/ruby $(hdrdir)/ruby $(srcdir) $(encsrcdir)].join(CONFIG["PATH_SEPARATOR"])%>
 LIBPATH = <%=libpathflag($DEFLIBPATH)%>
@@ -89,10 +90,25 @@ UNICODE_HDR_DIR = --missing-unicode-header-dir--
 encs all: <%= MODULE_TYPE == :static ? "lib" : "mod" %>encs
 modencs: enc trans
 libencs: libenc libtrans
-enc: $(ENCSOS)
+enc: $(ENCSOS)<%= " $(ENC_DSYMS_D)" if dsyms %>
 libenc: $(LIBENC)
-trans: $(TRANSSOS)
+trans: $(TRANSSOS)<%= " $(TRANS_DSYMS_D)" if dsyms %>
 libtrans: $(LIBTRANS)
+% if dsyms
+
+# The debug symbols of the encodings and of the transcoders come from one
+# dsymutil for the libraries linked since the last one: each run takes
+# about 0.08 s to start, and concurrent runs hardly overlap, while these
+# libraries are small (61 of them: 4.9 s one by one, 0.14 s together).
+$(ENC_DSYMS_D): $(ENCSOS)
+	$(ECHO) generating debug symbols of encodings
+	-$(Q)$(DSYMUTIL) $? 2>/dev/null
+	@exit > $@
+$(TRANS_DSYMS_D): $(TRANSSOS)
+	$(ECHO) generating debug symbols of transcoders
+	-$(Q)$(DSYMUTIL) $? 2>/dev/null
+	@exit > $@
+% end
 
 $(LIBENC): $(ENCOBJS)
 	@$(RM) $@
@@ -173,7 +189,7 @@ enc/encdb.$(OBJEXT): encdb.h
 enc/trans/transdb.$(OBJEXT): transdb.h
 
 clean:
-% %w[$(ENCSOS) $(LIBENC) $(ENCOBJS) $(ENCCLEANOBJS) $(ENCCLEANLIBS) $(TRANSSOS) $(LIBTRANS) $(TRANSOBJS) $(TRANSCLEANOBJS) $(TRANSCLEANLIBS) $(ENC_TRANS_D) $(ENC_TRANS_SO_D)].each do |clean|
+% %w[$(ENCSOS) $(LIBENC) $(ENCOBJS) $(ENCCLEANOBJS) $(ENCCLEANLIBS) $(TRANSSOS) $(LIBTRANS) $(TRANSOBJS) $(TRANSCLEANOBJS) $(TRANSCLEANLIBS) $(ENC_TRANS_D) $(ENC_TRANS_SO_D) $(ENC_DSYMS_D) $(TRANS_DSYMS_D)].each do |clean|
 	$(Q)$(RMALL) <%=pathrep[clean]%>
 % end
 % unless inplace
