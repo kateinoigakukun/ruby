@@ -665,11 +665,13 @@ endif
 # (another CCDLFLAGS and extconf.h) or when configure's arguments choose the
 # extensions or name ripper: the Makefile compiles it then, as before.
 # Without the base ruby, only when ripper.c is already in the extension's
-# build directory: a release tarball ships the sources, and when it is built
-# in its own directory they are there.  Then the rule compiles by ripper.c
-# and extconf.h alone (mkdepend.rb needs a ruby), after the headers that
-# ripper.c includes and the build makes (incs, parse.h, probes.h).
-ripper_obj_early_srcs := $(if $(filter yes,$(HAVE_BASERUBY)),yes,$(wildcard ext/ripper/ripper.c))
+# build directory or in the source directory's: a release tarball ships the
+# sources, which are in the build directory when it is built in its own
+# directory and which the sub-make finds through VPATH, as the extension's
+# Makefile does, when it is built out of tree.  Then the rule compiles by
+# ripper.c and extconf.h alone (mkdepend.rb needs a ruby), after the headers
+# that ripper.c includes and the build makes (incs, parse.h, probes.h).
+ripper_obj_early_srcs := $(if $(filter yes,$(HAVE_BASERUBY)),yes,$(wildcard ext/ripper/ripper.c $(srcdir)/ext/ripper/ripper.c))
 ripper_obj_early_args := $(EXTSTATIC) $(configure_args) $(CONFIGURE_ARGS)
 ifeq ($(if $(ripper_obj_early_srcs),,no)$(strip $(EXTSTATIC))$(findstring -ext,$(ripper_obj_early_args))$(findstring ripper,$(ripper_obj_early_args)),)
 
