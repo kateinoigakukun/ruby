@@ -12,6 +12,30 @@
 % rule_subst = CONFIG["RULE_SUBST"] || "%s"
 % transvpath = rule_subst.dup.sub!(/\{[^{}]+\}/, '$(TRANSVPATH)/') || "enc/trans/%s"
 % transvpath_prefix = (rule_subst.dup.sub!(/\{[^{}]+\}/, '{$(TRANSVPATH)}') || "%s") % ""
+% trans_deps = ATRANS.to_h do |e|
+%   trans = IO.read(File.join($srcdir, "trans", "#{e}.trans"))
+%   src = trans.scan(/^\s*require\s+[\'\"]([^\'\"]*)/).flatten.map{|c|c+".rb"}
+%   if src.empty?
+%     src = trans.scan(/^\s*transcode_tblgen_\w+\s+[\'\"]([^\'\"]*)/).flatten.map{|c|c.downcase+"-tbl.rb"}
+%   end
+%   [e, src]
+% end
+% # The generated transcoder sources are compiled where the rules below
+% # make them, in the build directory with make programs that look up
+% # targets in VPATH, unless an up-to-date copy is in the source
+% # directory, as a release tarball ships them, and is used there as
+% # VPATH would find it.  Out of the build directory, a normal build
+% # writes nothing into the source directory.
+% trans_csrcs = {}
+% if !inplace and transvpath.start_with?("enc/trans/")
+%   tblgen = File.join($top_srcdir, "tool/transcode-tblgen.rb")
+%   ATRANS.each do |e|
+%     shipped = File.join($srcdir, "trans", "#{e}.c")
+%     prereqs = ["#{e}.trans", *trans_deps[e]].map {|s| File.join($srcdir, "trans", s)} << tblgen
+%     next if File.exist?(shipped) and prereqs.all? {|s| File.mtime(s) <= File.mtime(shipped)}
+%     trans_csrcs["trans/#{e}"] = transvpath % "#{e}.c"
+%   end
+% end
 % CONFIG['ARFLAGS'] = 'rcu ' if (CONFIG['ARFLAGS'] || "").empty?
 % CONFIG['RANLIB'] = ':' if (CONFIG['RANLIB'] || "").empty?
 % CONFIG['CPPFLAGS'] += " -DRUBY_EXPORT=1" if CONFIG["EXTSTATIC"] == "static"
@@ -106,15 +130,9 @@ $(ENCSOS) $(TRANSSOS): $(ENC_TRANS_SO_D)
 enc/<%=e%>.$(OBJEXT): <%=deps.map {|n| rule_subst % n}.join(' ')%>
 %   end
 %   ATRANS.each do |e|
-%     src = "#{e}.trans"
 
 <%=transvpath % "#{e}.c"%>: <%= transvpath % "#{e}.trans"%>
-%     trans = IO.read(File.join($srcdir, "trans", src))
-%     src = trans.scan(/^\s*require\s+[\'\"]([^\'\"]*)/).flatten.map{|c|c+".rb"}
-%     if src.empty?
-%       src = trans.scan(/^\s*transcode_tblgen_\w+\s+[\'\"]([^\'\"]*)/).flatten.map{|c|c.downcase+"-tbl.rb"}
-%     end
-<%=transvpath % "#{e}.c"%>: <%= src.map {|s| transvpath % "#{s}"}.join(" ")%> $(tooldir)/transcode-tblgen.rb
+<%=transvpath % "#{e}.c"%>: <%= trans_deps[e].map {|s| transvpath % "#{s}"}.join(" ")%> $(tooldir)/transcode-tblgen.rb
 %   end
 
 % end
@@ -144,9 +162,10 @@ enc/<%=e%>.$(OBJEXT): <%=deps.map {|n| rule_subst % n}.join(' ')%>
 
 % end
 % dependencies.each do |e|
-<%="enc/#{e}.$(OBJEXT)"%>: <%="$(encsrcdir)/#{e}.c"%>
-	$(ECHO) compiling <%= "$(encsrcdir)/#{e}.c"%>
-	$(Q)<%=COMPILE_C.gsub(/\$(\()?<(\:[^)]+)?(\))?/){"$(encsrcdir)/#{e}.c"}%>
+%   src = trans_csrcs[e] || "$(encsrcdir)/#{e}.c"
+<%="enc/#{e}.$(OBJEXT)"%>: <%=src%>
+	$(ECHO) compiling <%=src%>
+	$(Q)<%=COMPILE_C.gsub(/\$(\()?<(\:[^)]+)?(\))?/){src}%>
 
 % end
 
