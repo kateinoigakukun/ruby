@@ -1658,7 +1658,20 @@ extract-gems$(sequential): PHONY
 	    -e 'end' \
 	    gems/bundled_gems
 
-extract-gems$(sequential): $(HAVE_GIT:yes=clone-bundled-gems-src)
+extract-gems$(sequential): $(HAVE_GIT:yes=clone-bundled-gems-rev-src)
+
+# A release package, which is not a git checkout, ships every bundled gem
+# (gems/*.gem, extracted under .bundle/gems), those at a revision too: use
+# them as they are, as defs/gmake.mk does, instead of cloning them from the
+# network.  A git checkout, or a gem at a revision without its gem file,
+# still clones them.
+clone-bundled-gems-rev-src: PHONY
+	$(Q) $(BASERUBY) -C "$(srcdir)" $(split_option) -anw \
+	    -e 'BEGIN {exit 1 if File.exist?(".git")}' \
+	    -e 'gem, ver, _, rev = *$$F' \
+	    -e 'exit 1 if rev and !File.exist?("gems/#{gem}-#{ver}.gem")' \
+	    gems/bundled_gems || \
+	$(MAKE) $(mflags) clone-bundled-gems-src
 
 flush-gems: outdate-bundled-gems
 outdate-bundled-gems: PHONY
