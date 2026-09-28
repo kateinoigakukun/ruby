@@ -87,6 +87,8 @@ class MakeMakefile::Depend
       @accessed = Set.new
       @unresolved = Set.new
       @cache = cache
+      @resolved = (cache[[:resolve, @include_dirs, @quote_dirs]] ||= {})
+      @resolved_here = {}
     end
 
     def scan(source)
@@ -97,8 +99,8 @@ class MakeMakefile::Depend
 
     private
 
+    # +path+ is absolute and expanded.
     def visit(path, dependencies, visited, record: true)
-      path = File.expand_path(path)
       return if visited.include?(path)
       directives = source_directives(path)
       return unless directives
@@ -106,41 +108,45 @@ class MakeMakefile::Depend
       dependencies.add(relative(path)) if record
 
       conditions = []
-      directives.each do |directive|
-        case directive
-        when /\Aifdef\s+(\w+)/
-          conditions << symbol_condition($1)
-        when /\Aifndef\s+(\w+)/
-          condition = symbol_condition($1)
+      dir = nil
+      directives.each do |kind, arg|
+        case kind
+        when :ifdef
+          conditions << symbol_condition(arg)
+        when :ifndef
+          condition = symbol_condition(arg)
           conditions << (condition == :all ? :all : !condition)
-        when /\Aif\s+(.+)/
-          conditions << expression_condition($1)
-        when /\Aelif\s+(.+)/
+        when :if
+          conditions << expression_condition(arg)
+        when :elif
           conditions[-1] = if conditions[-1] == true
             false
           elsif conditions[-1] == false
-            expression_condition($1)
+            expression_condition(arg)
           else
             :all
           end
-        when /\Aelse\b/
+        when :else
           conditions[-1] = !conditions[-1] if [true, false].include?(conditions[-1])
-        when /\Aendif\b/
+        when :endif
           conditions.pop
         else
           next if conditions.include?(false)
-          case directive
-          when /\A(?:line\s+)?\d+\s+"([^"<>]+)"/
-            dependencies.add($1.delete_prefix("./"))
-          when /\Ainclude(?:_next)?\s+(.+)/
-            scan_include($1, path, dependencies, visited)
+          case kind
+          when :line
+            dependencies.add(arg)
+          when :include
+            scan_include(arg, dir ||= File.dirname(path), dependencies, visited)
           end
         end
       end
     end
 
+    # The preprocessing directives of the file at +path+ (absolute and
+    # expanded), each a [kind, argument] which visit and scan_include
+    # interpret, or nil if there is no such file.  Directives neither
+    # can use are left out.
     def source_directives(path)
-      path = File.expand_path(path)
       @accessed.add(path)
       return @cache[path] if @cache.key?(path)
 
@@ -153,16 +159,42 @@ class MakeMakefile::Depend
             next if logical_line.sub!(/\\\r?\n\z/, "")
 
             if directive = logical_line[/\A\s*#\s*\K.*/]
-              directives << directive
+              directive = parse_directive(directive) and directives << directive
             end
             logical_line.clear
           end
           unless logical_line.empty?
             if directive = logical_line[/\A\s*#\s*\K.*/]
-              directives << directive
+              directive = parse_directive(directive) and directives << directive
             end
           end
           directives
+        end
+      end
+    end
+
+    def parse_directive(directive)
+      case directive
+      when /\Aifdef\s+(\w+)/
+        [:ifdef, $1]
+      when /\Aifndef\s+(\w+)/
+        [:ifndef, $1]
+      when /\Aif\s+(.+)/
+        [:if, $1]
+      when /\Aelif\s+(.+)/
+        [:elif, $1]
+      when /\Aelse\b/
+        [:else]
+      when /\Aendif\b/
+        [:endif]
+      when /\A(?:line\s+)?\d+\s+"([^"<>]+)"/
+        [:line, $1.delete_prefix("./")]
+      when /\Ainclude(?:_next)?\s+(.+)/
+        case $1.sub(%r{//.*\z}, '').strip
+        when /\A([<"])([^<>"]+)[>"]/
+          [:include, [$1 == '"', $2]]
+        when /\A([A-Za-z_]\w*)/
+          [:include, [nil, $1]]
         end
       end
     end
@@ -191,13 +223,11 @@ class MakeMakefile::Depend
       :all
     end
 
-    def scan_include(argument, current, dependencies, visited)
-      case argument.sub(%r{//.*\z}, '').strip
-      when /\A([<"])([^<>"]+)[>"]/
-        quoted = $1 == '"'
-        name = $2
-      when /\A([A-Za-z_]\w*)/
-        name = $1
+    # +argument+ is [quoted, name] of an include of a header name, or
+    # [nil, name] of an include of a macro, in a file in +dir+.
+    def scan_include(argument, dir, dependencies, visited)
+      quoted, name = argument
+      if quoted.nil?
         unless @aliases.key?(name) || @dependencies.key?(name) ||
             @targets.include?(name)
           name = @macros[name]
@@ -220,7 +250,7 @@ class MakeMakefile::Depend
         dependencies.merge(virtual)
       elsif name.end_with?(".inc", ".rbinc", ".rbbin")
         dependencies.add(name)
-      elsif path = resolve(name, current, quoted)
+      elsif path = resolve(name, dir, quoted)
         visit(path, dependencies, visited)
       elsif @targets.include?(name)
         dependencies.add(name)
@@ -229,16 +259,29 @@ class MakeMakefile::Depend
       end
     end
 
-    def resolve(name, current, quoted)
+    # The file +name+ included from a file in +dir+ is, or nil.  Which
+    # it is and which files are looked at (#accessed) are the same for the
+    # same name and directory, and reused.
+    def resolve(name, dir, quoted)
+      dir = nil unless quoted
+      here = (@resolved_here[dir] ||= {})
+      return here[name] if here.key?(name)
+      path, looked = ((@resolved[dir] ||= {})[name] ||= resolve_in(name, dir))
+      @accessed.merge(looked)
+      here[name] = path
+    end
+
+    def resolve_in(name, dir)
+      looked = []
       dirs = []
-      dirs << File.dirname(current) if quoted
-      dirs.concat(@quote_dirs) if quoted
-      dirs.concat(@include_dirs)
-      dirs.each do |dir|
-        path = File.expand_path(name, dir)
-        return path if source_directives(path)
+      dirs << dir << @quote_dirs if dir
+      dirs << @include_dirs
+      dirs.flatten.each do |d|
+        path = File.expand_path(name, d)
+        looked << path
+        return [path, looked] if source_directives(path)
       end
-      nil
+      [nil, looked]
     end
 
     def relative(path)
@@ -365,6 +408,8 @@ class MakeMakefile::Depend
     @dependency_contents = {}
     @source_cache = {}
     @stat_cache = {}
+    @relative_cache = {}
+    @relative_source_cache = {}
   end
 
   private
@@ -572,6 +617,12 @@ class MakeMakefile::Depend
 
   # Makes +path+ relative to #root when it refers to a source-tree file.
   def relative_source(path)
+    @relative_source_cache.fetch(path) do
+      @relative_source_cache[path] = relative_source!(path)
+    end
+  end
+
+  def relative_source!(path)
     expanded = File.expand_path(path)
     expanded = File.expand_path(path, @root) unless File.exist?(expanded)
     prefix = @root + File::SEPARATOR
@@ -585,6 +636,12 @@ class MakeMakefile::Depend
   # keep the name their Make rules use even when the tool runs in a
   # build directory nested inside the source tree.
   def relative_dependency(path)
+    @relative_cache.fetch(path) do
+      @relative_cache[path] = relative_dependency!(path)
+    end
+  end
+
+  def relative_dependency!(path)
     expanded = File.expand_path(path, @root)
     prefix = @root + File::SEPARATOR
     if expanded.start_with?(prefix) &&
@@ -1067,6 +1124,8 @@ class MakeMakefile::Depend
           scope: nil, thread_model: nil, verbose: false)
     @source_cache.clear
     @stat_cache.clear
+    @relative_cache.clear
+    @relative_source_cache.clear
     case mode
     when :output
       raise ArgumentError, "output directory is missing" unless output
