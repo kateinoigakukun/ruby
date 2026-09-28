@@ -163,6 +163,21 @@ distclean:
 % if rubies.size > 1
 <%= rubies[1..-1].join(' ')%>: <%= rubies[0] %>
 % end
+% unless macros["EXTDLLIBS"].empty?
+
+# The debug symbols of the extension libraries (EXTDLLIBS, see extmk.rb) come
+# from one dsymutil after all of them, for those linked since it last ran.
+DSYMUTIL = <%= RbConfig::MAKEFILE_CONFIG["DSYMUTIL"] %>
+EXTS_DSYMS_D = <%= RbConfig::CONFIG["EXTOUT"] %>/.timestamp/<%= test_exts ? "test-exts" : "exts" %>-<%= RbConfig::CONFIG["arch"] %>.dSYM.time
+all: dsyms-all
+static: dsyms-static
+dsyms-all: $(extensions:/.=/all)
+dsyms-static: $(extensions:/.=/static)
+dsyms-all dsyms-static:
+	-$(Q)if test -f $(EXTS_DSYMS_D); then libs=`find $(EXTDLLIBS) -newer $(EXTS_DSYMS_D)`; \
+	else libs="$(EXTDLLIBS)"; fi; test -z "$$libs" || $(DSYMUTIL) $$libs 2>/dev/null
+	@exit > $(EXTS_DSYMS_D)
+% end
 
 libencs:
 	$(Q)$(MAKE)<%=mflags%> -f enc.mk V=$(V) MINIRUBY="$(MINIRUBY)" $@

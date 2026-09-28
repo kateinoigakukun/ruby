@@ -143,6 +143,27 @@ def extract_makefile(makefile, keep = true)
   true
 end
 
+# The library the Makefile in +dir+ links, its $(TARGET_SO), as a path
+# from the top build directory; nil if it links none.
+def extension_library(dir, makefile)
+  vars = {}
+  File.read(makefile).gsub(/\\\n/, ' ').scan(/^(\w+)[ \t]*=[ \t]*(.*)$/) {|n, v| vars[n] = v.strip}
+  return unless /\S/ =~ vars["TARGET"]
+  lib = RbConfig.expand("$(TARGET_SO)".dup, vars)
+  return if lib.include?("$")
+  path = []
+  "#{dir}/#{lib}".split("/").each do |s|
+    case s
+    when ".", ""
+    when ".."
+      path.empty? || path.last == ".." ? path << s : path.pop
+    else
+      path << s
+    end
+  end
+  path.join("/")
+end
+
 def extmake(target, basedir = 'ext', maybestatic = true)
   FileUtils.mkpath target unless File.directory?(target)
   begin
@@ -171,6 +192,7 @@ def extmake(target, basedir = 'ext', maybestatic = true)
     $srcdir = File.join($top_srcdir, basedir, $mdir)
     $preload = nil
     $extso = []
+    $extdllib = nil
     makefile = "./Makefile"
     static = $static
     $static = nil if noinstall = File.fnmatch?("-*", target)
@@ -262,6 +284,7 @@ def extmake(target, basedir = 'ext', maybestatic = true)
 
       return [parent, message]
     end
+    $extdllib = extension_library("#{basedir}/#{target}", makefile) if @dsyms_apart and !$static
     args = $mflags
     unless $destdir.to_s.empty? or $mflags.defined?("DESTDIR")
       args += ["DESTDIR=" + relative_from($destdir, "../"+prefix)]
@@ -540,6 +563,12 @@ ext_prefix.chomp!("/")
 
 @ext_prefix = ext_prefix
 @inplace = inplace
+# Where dsymutil makes the debug symbols of the libraries (darwin), those of
+# the extension libraries exts.mk builds (it reads the exts.mk of ext/* and
+# .bundle/gems/*, see template/exts.mk.tmpl) come from one dsymutil after
+# they are all linked, not from their link rules one by one (POSTLINK):
+# each run takes a while to start and concurrent runs hardly overlap.
+@dsyms_apart = (CONFIG["DSYMUTIL"] || ":") != ":" && %w[ext .bundle/gems].include?(ext_prefix)
 extend Module.new {
 
   def timestamp_file(name, target_prefix = nil)
@@ -555,7 +584,12 @@ extend Module.new {
   end
 
   def configuration(srcdir)
-    super << "EXTSO #{['=', $extso].join(' ')}\n"
+    conf = super << "EXTSO #{['=', $extso].join(' ')}\n"
+    if @dsyms_apart and !$static
+      postlink = config_string('POSTLINK_NODSYM', RbConfig::CONFIG) || ":"
+      conf.each {|s| s.sub!(/^POSTLINK = .*$/) {"POSTLINK = #{postlink}"}}
+    end
+    conf
   end
 
   def create_makefile(*args, &block)
@@ -651,6 +685,7 @@ Dir::chdir(ext_prefix)
 hdrdir = $hdrdir
 $hdrdir = ($top_srcdir = relative_from(srcdir, $topdir = "..")) + "/include"
 extso = []
+extdllibs = []
 fails = []
 exts.each do |d|
   $static = $force_static ? true : $static_ext.fetch(d) do
@@ -660,6 +695,7 @@ exts.each do |d|
   if !$nodynamic or $static
     result = extmake(d, ext_prefix, !@gemname) or abort
     extso |= $extso
+    extdllibs << $extdllib if $extdllib
     fails << [d, result] unless result == true
   end
 end
@@ -769,6 +805,7 @@ begin
     mf.macro "EXTSO", extso
     mf.macro "EXTLDFLAGS", $extflags.split
     mf.macro "EXTINITS", extinits
+    mf.macro "EXTDLLIBS", extdllibs unless extdllibs.empty?
     submakeopts = []
     if enable_config("shared", $enable_shared)
       submakeopts << 'DLDOBJS="$(EXTOBJS) $(EXTENCS)"'
