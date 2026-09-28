@@ -23,5 +23,117 @@ options.singleton_class.define_method(:finish) do
   @op_dir = File.expand_path(@op_dir, invoked)
 end
 
+# The number of processes to write ri files with: the -j of make (in
+# MAKEFLAGS), the number of processors (at most 8) under make -j without a
+# number or with only a jobserver, else 1.
+def rdoc_jobs
+  flags = ENV["MAKEFLAGS"].to_s
+  jobs = flags.scan(/(?:\A|\s)(?:-j|--jobs=?)(\d*)(?=\s|\z)/).map {|n,| n.to_i}
+  if (n = jobs.find(&:positive?))
+    return n
+  elsif jobs.empty? and !/(?:\A|\s)--jobserver-(?:auth|fds)=/.match?(flags)
+    return 1
+  end
+  require 'etc'
+  [Etc.nprocessors, 8].min
+rescue LoadError
+  4
+end
+
+# Writing the ri files (RDoc::Store#save) takes most of the time: split it
+# among processes, each writing the files of some classes and modules (with
+# their methods and attributes) and pages once this process has run
+# RDoc::Store#save as a dry run for the cache, which it writes last.
+#
+# RDoc::Store#save_class merges what it saves with the file it finds.  That
+# is a file of an earlier run, which the dry run reads before any is
+# written, or, on a case-insensitive file system, the file of another class
+# or module whose name differs only in case: this process writes those, and
+# the other classes and modules of their top-level namespace, which the
+# merge may change, in its dry run.  Each other top-level namespace is
+# written by one process in the order of RDoc::Store#save.
+module RDocParallelSave
+  attr_accessor :save_jobs
+
+  def save
+    jobs = save_jobs.to_i
+    return super if jobs < 2 or @dry_run or !Process.respond_to?(:fork)
+    size = ->(klass) {1 + klass.method_list.size + klass.attributes.size}
+    groups = all_classes_and_modules.group_by {|klass| klass.full_name[/\A[^:]*/].downcase}
+    owner = {}
+    loads = Array.new(jobs, 0)
+    groups.sort_by {|_, klasses| -klasses.sum(&size)}.each do |_, klasses|
+      names = klasses.map {|klass| klass.full_name.downcase}
+      share = names.uniq.size < names.size ? :self : loads.index(loads.min)
+      klasses.each {|klass| owner[klass.full_name] = share}
+      loads[share] += klasses.sum(&size) unless share == :self
+    end
+    all_files.each_with_index {|file, i| owner[file] = i % jobs}
+    writers = []
+    pids = Array.new(jobs) do |share|
+      r, w = IO.pipe
+      pid = fork do
+        w.close
+        writers.each(&:close)
+        r.read                  # until the dry run has read the files
+        @save_owner, @save_share = owner, share
+        super()
+        exit!(true)
+      end
+      r.close
+      writers << w
+      pid
+    end
+    begin
+      @save_owner, @save_share = owner, :self
+      super()
+    ensure
+      @save_owner = @save_share = nil
+      writers.each(&:close)
+      failed = pids.count {|pid| !Process.wait2(pid)[1].success?}
+    end
+    raise "#{failed} of #{jobs} processes failed to write ri files" if failed > 0
+    save_cache
+  end
+
+  def save_class(klass)
+    save_as(@save_owner && @save_owner[klass.full_name]) {super}
+  end
+
+  def save_method(klass, method)
+    save_as(@save_owner && @save_owner[klass.full_name]) {super}
+  end
+
+  def save_page(page)
+    save_as(@save_owner && @save_owner[page]) {super}
+  end
+
+  def save_cache
+    super unless @save_owner
+  end
+
+  private
+
+  def save_as(share)
+    if !@save_owner or share == @save_share
+      yield
+    elsif @save_share == :self      # the dry run
+      begin
+        @dry_run = true
+        yield
+      ensure
+        @dry_run = false
+      end
+    end
+  end
+end
+RDoc::Store.prepend(RDocParallelSave)
+
+rdoc = RDoc::RDoc.new
+rdoc.singleton_class.define_method(:generate) do
+  @store.save_jobs = rdoc_jobs
+  super()
+end
+
 # Do not hide errors when generating documents of Ruby itself.
-RDoc::RDoc.new.document options
+rdoc.document options
