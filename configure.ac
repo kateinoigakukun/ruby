@@ -1108,7 +1108,14 @@ AS_IF([test "x$OPT_DIR" != x], [
 ])
 AC_SUBST(incflags, "$INCFLAGS")
 
-test -z "${ac_env_CFLAGS_set}" -a -n "${cflags+set}" && eval CFLAGS="\"$cflags $ARCH_FLAG\""
+AS_IF([test -z "${ac_env_CFLAGS_set}" -a -n "${cflags+set}"], [
+    # The checks below compile conftests, which are thrown away: debugging
+    # information in them is waste, and costly on Darwin, where every link
+    # with -g runs dsymutil.  Leave debugflags out of CFLAGS here; CFLAGS
+    # becomes ${cflags}, which includes debugflags, at the end.
+    check_cflags=`echo "$cflags" | sed 's/ \${debugflags} / /'`
+    eval CFLAGS="\"$check_cflags $ARCH_FLAG\""
+])
 test -z "${ac_env_CXXFLAGS_set}" -a -n "${cxxflags+set}" && eval CXXFLAGS="\"$cxxflags $ARCH_FLAG\""
 
 
@@ -4376,7 +4383,7 @@ AS_IF([test -n "${LIBS}"], [
 LIBRUBYARG_STATIC="${LIBRUBYARG_STATIC} \$(MAINLIBS)"
 CPPFLAGS="$CPPFLAGS "'$(DEFS) ${cppflags}'
 AS_IF([test -n "${cflags+set}"], [
-    cflagspat=`eval echo '"'"${cflags}"'"' | sed 's/[[][|.*]]/\\&/g;s/^  */ /;s/^  *$/ /'`
+    cflagspat=`eval echo '"'"${check_cflags-${cflags}}"'"' | sed 's/[[][|.*]]/\\&/g;s/^  */ /;s/^  *$/ /'`
     CFLAGS=`echo " $CFLAGS " | sed "s|$cflagspat"'|${cflags}|;s/^ *//;s/ *$//'`
 ])
 AS_IF([test -n "${cxxflags+set}"], [
