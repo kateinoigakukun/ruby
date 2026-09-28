@@ -327,6 +327,17 @@ bundled-gems := $(shell sed \
 bundled-gems-rev := $(filter-out $(subst |,,$(bundled-gems)),$(bundled-gems))
 bundled-gems := $(filter-out $(bundled-gems-rev),$(bundled-gems))
 
+# A release package, which is not a git checkout, ships every bundled gem
+# (gems/*.gem, extracted under .bundle/gems), those at a revision too: use
+# them as they are, as the others, instead of cloning and building them
+# again from the network.
+ifeq ($(wildcard $(srcdir)/.git),)
+bundled-gems-shipped := $(foreach g,$(bundled-gems-rev),\
+    $(if $(wildcard $(srcdir)/gems/$(word 1,$(subst |, ,$(g)))-$(word 2,$(subst |, ,$(g))).gem),$(g)))
+bundled-gems-rev := $(filter-out $(bundled-gems-shipped),$(bundled-gems-rev))
+bundled-gems += $(foreach g,$(bundled-gems-shipped),$(word 1,$(subst |, ,$(g)))-$(word 2,$(subst |, ,$(g))))
+endif
+
 # calls $(1) with name, version, revision, URL
 foreach-bundled-gems-rev = \
     $(foreach g,$(bundled-gems-rev),$(call foreach-bundled-gems-rev-0,$(1),$(subst |, ,$(value g))))
