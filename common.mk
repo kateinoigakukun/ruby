@@ -311,7 +311,7 @@ ZJIT_RUSTC_ARGS = --crate-name=zjit \
 
 all: $(SHOWFLAGS) main
 
-main: $(SHOWFLAGS) exts $(ENCSTATIC:static=lib)encs
+main: $(SHOWFLAGS) exts $(ENCSTATIC:static=lib)encs $(DSYMS)
 	@$(NULLCMD)
 
 .PHONY: showflags
@@ -1107,7 +1107,7 @@ exe/$(PROGRAM): $(TIMESTAMPDIR)/$(arch)/.time
 exe/$(PROGRAM): ruby-runner.c ruby-runner.h exe/.time $(PREP) {$(VPATH)}config.h
 	$(Q) $(CC) $(CFLAGS) $(INCFLAGS) $(CPPFLAGS) -DRUBY_INSTALL_NAME=$(@F) $(COUTFLAG)ruby-runner.$(OBJEXT) -c $(CSRCFLAG)$(srcdir)/ruby-runner.c
 	$(Q) $(PURIFY) $(CC) $(CFLAGS) $(LDFLAGS) $(XLDFLAGS) $(OUTFLAG)$@ ruby-runner.$(OBJEXT) $(LIBS)
-	$(Q) $(POSTLINK)
+	$(Q) $(POSTLINK_NODSYM)
 	$(Q) $(BOOTSTRAPRUBY) \
 	    -e 'prog, dest, inst = ARGV; dest += "/ruby"' \
 	    -e 'exit unless prog==inst' \

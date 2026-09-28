@@ -1153,6 +1153,8 @@ AS_CASE(["$target_os"], [*android*], [
 AS_UNSET(ORIG_LIBS)
 POSTLINK=:
 AC_SUBST(POSTLINK)
+DSYMUTIL=:
+AC_SUBST(DSYMUTIL)
 cleanlibs=
 AC_SUBST(cleanlibs)
 AS_CASE(["$target_os"],
@@ -1242,9 +1244,8 @@ main()
 		    POSTLINK="{ test -z '\$(RUBY_CODESIGN)' || $codesign -s '\$(RUBY_CODESIGN)' \$@; }${POSTLINK:+; $POSTLINK}"
 		])
 		AS_IF([test -n "$dsymutil"], [
-		    POSTLINK="$dsymutil \$@ 2>/dev/null${POSTLINK:+; $POSTLINK}"
+		    DSYMUTIL=$dsymutil
 		])
-		: ${POSTLINK:=:}
 		AC_CHECK_HEADERS(crt_externs.h, [], [], [
 		    #include <crt_externs.h>
 		])
@@ -1406,6 +1407,17 @@ main()
 		],
 [	LIBS="-lm $LIBS"])
 : ${ORIG_LIBS=$LIBS}
+
+# POSTLINK_NODSYM finishes a program or libruby after its link (wasm-opt,
+# codesign); their debug symbols are made by targets of their own (DSYMS),
+# which nothing in the build waits for.  POSTLINK, which LINK_SO runs for
+# extension libraries, makes the debug symbols (dsymutil) first.
+POSTLINK_NODSYM=${POSTLINK:-:}
+AC_SUBST(POSTLINK_NODSYM)
+AS_IF([test "$DSYMUTIL" != :], [
+    POSTLINK="$DSYMUTIL \$@ 2>/dev/null${POSTLINK:+; $POSTLINK}"
+])
+: ${POSTLINK:=:}
 
 AS_IF([test -n "${POSTLINK}"], [
     # NOTE: A (part of) link commands used link shared extension libraries. If
@@ -3820,6 +3832,14 @@ AS_CASE("$cross_compiling:${LIBPATHENV}", [yes:* | no:], [], [
 	AC_MSG_RESULT(yes)]
     )
 ])
+
+# The debug symbols of the programs and libruby, where dsymutil makes them
+AS_IF([test "$DSYMUTIL" != :], [
+    DSYMS='miniruby$(EXEEXT).dSYM $(PROGRAM).dSYM'
+    AS_IF([test "$ENABLE_SHARED" = yes], [DSYMS="$DSYMS \$(LIBRUBY_SO).dSYM"])
+    AS_IF([test -n "$XRUBY_LIBPATHENV_WRAPPER"], [DSYMS="$DSYMS $XRUBY_LIBPATHENV_WRAPPER.dSYM"])
+])
+AC_SUBST(DSYMS)
 
 AC_ARG_ENABLE(dtrace,
         AS_HELP_STRING([--enable-dtrace],
