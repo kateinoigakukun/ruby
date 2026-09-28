@@ -1336,6 +1336,10 @@ install?('modular-gc') do
   end
 end
 
+# Everything but the documents: `--exclude=nodoc` installs only the
+# documents of the types given, `--exclude=doc` the rest.
+$install_procs[:nodoc] = $install_procs.each_value.flat_map(&:itself).uniq - $install_procs[:doc]
+
 parse_args()
 
 include FileUtils

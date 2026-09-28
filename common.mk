@@ -474,8 +474,11 @@ INSTALL_ALL = all
 
 install-all: pre-install-all do-install-all post-install-all
 pre-install-all:: all pre-install-local pre-install-ext pre-install-gem pre-install-doc
-do-install-all: pre-install-all $(DOT_WAIT) docs
-	$(INSTRUBY) --make="$(MAKE)" $(INSTRUBY_ARGS) --install=$(INSTALL_ALL) $(INSTALL_DOC_OPTS)
+# The documents install once generated (docs), everything else meanwhile.
+do-install-all: pre-install-all $(DOT_WAIT) docs do-install-all-nodoc
+	$(INSTRUBY) --make="$(MAKE)" $(INSTRUBY_ARGS) --install=$(INSTALL_ALL) --exclude=nodoc $(INSTALL_DOC_OPTS)
+do-install-all-nodoc: pre-install-all
+	$(INSTRUBY) --make="$(MAKE)" $(INSTRUBY_ARGS) --install=$(INSTALL_ALL) --exclude=doc
 post-install-all:: post-install-local post-install-ext post-install-gem post-install-doc
 	@$(NULLCMD)
 
