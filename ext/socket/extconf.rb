@@ -305,7 +305,7 @@ unless $mswin or $mingw
   headers = %w<sys/types.h netdb.h string.h sys/socket.h netinet/in.h>
 end
 
-%w[
+headers.concat(have_headers(%w[
   sys/uio.h
   xti.h
   netinet/in_systm.h
@@ -329,11 +329,7 @@ end
   resolv.h
   pthread.h
   sched.h
-].each {|h|
-  if have_header(h, headers)
-    headers << h
-  end
-}
+], headers))
 
 def check_socklen(headers)
   def (fmt = "none").%(x)

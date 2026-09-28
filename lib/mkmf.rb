@@ -455,7 +455,7 @@ MESSAGE
     end
 
     class Check
-      attr_reader :conftest, :log, :error
+      attr_reader :conftest, :log, :error, :result
 
       def initialize(conftest, target, meth, args, kw, block)
         @conftest = conftest
@@ -575,8 +575,10 @@ MESSAGE
     end
 
     # Runs _calls_, each a [method name, arguments, keyword arguments,
-    # block] of _target_, and returns their results.
-    def run(target, calls)
+    # block] of _target_, and returns their results.  Without _replay_,
+    # returns the finished checks instead, whose output is not written yet
+    # (Check#replay writes it), up to the first one which failed.
+    def run(target, calls, replay: true)
       config = self.class.build_config
       names = Array.new(@jobs) {|i| "mkmf#{i}conf"}
       events = Thread::Queue.new
@@ -609,9 +611,9 @@ MESSAGE
         # that they remove their files, before the failed one is replayed.
         running = checks.count {|c| !c.done?}
         while checks.first&.done? and !(failed and running > 0)
-          results << checks.shift.replay
+          results << (replay ? checks.shift.replay : checks.shift)
         end
-        break if checks.empty? and calls.empty?
+        break if checks.empty? and (calls.empty? or failed)
         step[*events.pop]
       end
       results
@@ -1510,6 +1512,62 @@ SRC
         result
       end
     end
+  end
+
+  # Checks each of +headers+ as have_header does, one after another,
+  # including +preheaders+ and the ones of +headers+ found before it, and
+  # returns the ones found:
+  #
+  #   headers = %w[sys/types.h sys/socket.h]
+  #   headers.concat(have_headers(%w[netinet/in.h net/if.h], headers))
+  #
+  # checks the same as
+  #
+  #   %w[netinet/in.h net/if.h].each do |h|
+  #     headers << h if have_header(h, headers)
+  #   end
+  #
+  # Where parallel_checks runs checks concurrently, these run concurrently
+  # on a guess of the results: first that of each header without the
+  # others, then, from the first wrong guess on, the results of the checks
+  # made on the wrong guess, until the guesses are right.  Only the checks
+  # made with the right results end up in the messages,
+  # <code>mkmf.log</code> and <code>$defs</code>, in order.
+  def have_headers(headers, preheaders = nil, opt = "", &b)
+    preheaders = Array(preheaders)
+    found = []
+    i = 0
+    jobs = parallel_checks_jobs
+    if jobs > 1 and headers.size > 1 and ParallelChecks.supported? and !ParallelChecks.current
+      # (have_header configures the directory of each first: done here, the
+      # checks do not change the build configuration)
+      headers.each {|h| dir_config(h[/.*?(?=\/)|.*?(?=\.)/])}
+      config = ParallelChecks.build_config
+      guess = Array.new(headers.size, false)
+      while i < headers.size
+        assumed = found.dup
+        calls = (i...headers.size).map do |k|
+          call = [:have_header, [headers[k], preheaders + assumed, opt], {}, b]
+          assumed << headers[k] if guess[k]
+          call
+        end
+        checks = ParallelChecks.new(jobs).run(self, calls, replay: false)
+        ParallelChecks.build_config == config or raise ParallelChecks::CONFIG_CHANGED
+        # The first check was made on the right results, and each next one
+        # as long as the previous guess was right.
+        failed = checks.each_with_index do |check, k|
+          break true if check.error
+          found << headers[i] if (result = check.replay)
+          i += 1
+          next if result == guess[i - 1]
+          checks.drop(k + 1).each_with_index {|c, n| guess[i + n] = c.result}
+          break false
+        end
+        break if failed == true # one after another from there
+      end
+    end
+    headers.drop(i).each {|h| found << h if have_header(h, preheaders + found, opt, &b)}
+    found
   end
 
   # :stopdoc:
