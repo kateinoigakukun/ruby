@@ -672,6 +672,12 @@ rdoc: PHONY $(RDOC_DEPENDS) $(RBCONFIG) update-default-gemspecs
 	@echo Generating RDoc documentation
 	$(Q) $(RDOC) --ri --op "$(RDOCOUT)" $(RDOC_GEN_OPTS) $(RDOCFLAGS) .
 
+# The ri files a release package ships in $(srcdir)/doc/ri, made by
+# tool/make-snapshot (see tool/rdoc-srcdir).
+rdoc-package: PHONY $(RDOC_DEPENDS) $(RBCONFIG) update-default-gemspecs
+	@echo Generating RDoc documentation for the package
+	$(Q) $(RDOC) --ri --op "$(RDOCOUT)" --package $(RDOC_GEN_OPTS) .
+
 html: PHONY $(RDOC_DEPENDS) $(RBCONFIG) update-default-gemspecs
 	@echo Generating RDoc HTML files
 	$(Q) $(RDOC) --op "$(HTMLOUT)" $(RDOC_GEN_OPTS) $(RDOCFLAGS) .
@@ -1080,7 +1086,7 @@ $(ENC_MK): $(srcdir)/enc/make_encmake.rb $(srcdir)/enc/Makefile.in $(srcdir)/enc
 
 .PHONY: PHONY all fake prereq incs srcs preludes help
 .PHONY: test install install-nodoc install-doc dist
-.PHONY: loadpath golf capi rdoc install-prereq clear-installed-list
+.PHONY: loadpath golf capi rdoc rdoc-package install-prereq clear-installed-list
 .PHONY: clean clean-ext clean-local clean-enc clean-golf clean-rdoc clean-html clean-extout
 .PHONY: clean-srcs clean-srcs-local clean-srcs-ext
 .PHONY: distclean distclean-ext distclean-local distclean-enc distclean-golf distclean-extout

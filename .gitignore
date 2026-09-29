@@ -95,6 +95,7 @@ lcov*.info
 /coverage/coverage.json
 /coverage/index.html
 /doc/capi
+/doc/ri
 /enc.mk
 /encdb.h
 /exts.mk
