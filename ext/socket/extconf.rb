@@ -487,10 +487,42 @@ EOF
 
   # The checks below depend only on the headers and libraries found
   # above, and the ones in each block of `c.then` only on each other.
-  have_recvmsg = nil
+  # The ones which run a conftest come first: its first run can take a
+  # while (macOS assesses a new program when it first runs), which the
+  # other checks then hide.
+  have_recvmsg = getaddr_info_ok = nil
   parallel_checks do |c|
+    c.then {
+      have_recvmsg = have_func("recvmsg(0, (struct msghdr *)NULL, 0)", headers) # POSIX
+      if enable_config("close-fds-by-recvmsg-with-peek") {
+          have_msg_control && have_recvmsg &&
+          have_const('AF_UNIX', headers) && have_const('SCM_RIGHTS', headers) &&
+          test_recvmsg_with_msg_peek_creates_fds(headers)
+         }
+        $defs << "-DFD_PASSING_WORK_WITH_RECVMSG_MSG_PEEK"
+      end
+    }
+    c.then {
+      case enable_config("wide-getaddrinfo")
+      when true
+        getaddr_info_ok = :wide
+      when nil, false
+        getaddr_info_ok = (:wide if getaddr_info_ok.nil?)
+        if have_func("getnameinfo", headers) and have_func("getaddrinfo", headers)
+          if CROSS_COMPILING ||
+             $mingw || $mswin ||
+             checking_for("system getaddrinfo working") {
+               try_run(cpp_include(headers) + GETADDRINFO_GETNAMEINFO_TEST)
+             }
+            getaddr_info_ok = :os
+          end
+        end
+      else
+        raise "unexpected enable_config() value"
+      end
+    }
+
     c.have_func("sendmsg(0, (struct msghdr *)NULL, 0)", headers) # POSIX
-    c.then {have_recvmsg = have_func("recvmsg(0, (struct msghdr *)NULL, 0)", headers)} # POSIX
 
     c.have_func("freehostent((struct hostent *)NULL)", headers) # RFC 2553
     c.have_func("freeaddrinfo((struct addrinfo *)NULL)", headers) # RFC 2553
@@ -593,43 +625,9 @@ ipv6 kit and compile beforehand.
 EOS
   end
 
-  # These depend only on the checks above, and each only on itself.
-  getaddr_info_ok = nil
-  parallel_checks do |c|
-    c.then {
-      if !have_macro("IPPROTO_IPV6", headers) && have_const("IPPROTO_IPV6", headers)
-        File.read(File.join(File.dirname(__FILE__), "mkconstants.rb")).sub(/\A.*^__END__$/m, '').split(/\r?\n/).grep(/\AIPPROTO_\w*/){$&}.each {|name|
-          have_const(name, headers) unless $defs.include?("-DHAVE_CONST_#{name.upcase}")
-        }
-      end
-    }
-    c.then {
-      if enable_config("close-fds-by-recvmsg-with-peek") {
-          have_msg_control && have_recvmsg &&
-          have_const('AF_UNIX', headers) && have_const('SCM_RIGHTS', headers) &&
-          test_recvmsg_with_msg_peek_creates_fds(headers)
-         }
-        $defs << "-DFD_PASSING_WORK_WITH_RECVMSG_MSG_PEEK"
-      end
-    }
-    c.then {
-      case enable_config("wide-getaddrinfo")
-      when true
-        getaddr_info_ok = :wide
-      when nil, false
-        getaddr_info_ok = (:wide if getaddr_info_ok.nil?)
-        if have_func("getnameinfo", headers) and have_func("getaddrinfo", headers)
-          if CROSS_COMPILING ||
-             $mingw || $mswin ||
-             checking_for("system getaddrinfo working") {
-               try_run(cpp_include(headers) + GETADDRINFO_GETNAMEINFO_TEST)
-             }
-            getaddr_info_ok = :os
-          end
-        end
-      else
-        raise "unexpected enable_config() value"
-      end
+  if !have_macro("IPPROTO_IPV6", headers) && have_const("IPPROTO_IPV6", headers)
+    File.read(File.join(File.dirname(__FILE__), "mkconstants.rb")).sub(/\A.*^__END__$/m, '').split(/\r?\n/).grep(/\AIPPROTO_\w*/){$&}.each {|name|
+      have_const(name, headers) unless $defs.include?("-DHAVE_CONST_#{name.upcase}")
     }
   end
 
