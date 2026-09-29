@@ -673,7 +673,8 @@ rdoc: PHONY $(RDOC_DEPENDS) $(RBCONFIG) update-default-gemspecs
 	$(Q) $(RDOC) --ri --op "$(RDOCOUT)" $(RDOC_GEN_OPTS) $(RDOCFLAGS) .
 
 # The ri files a release package ships in $(srcdir)/doc/ri, made by
-# tool/make-snapshot (see tool/rdoc-srcdir).
+# tool/make-snapshot, which the rdoc target uses instead of generating
+# them when they are those it would generate (see tool/rdoc-srcdir).
 rdoc-package: PHONY $(RDOC_DEPENDS) $(RBCONFIG) update-default-gemspecs
 	@echo Generating RDoc documentation for the package
 	$(Q) $(RDOC) --ri --op "$(RDOCOUT)" --package $(RDOC_GEN_OPTS) .

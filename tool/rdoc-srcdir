@@ -340,6 +340,67 @@ module RDocPackage
                        cases.map {|file, dest| "case #{file}\t#{dest}"}, stamp[3..]].join("\n") + "\n")
     puts "Packaged #{count} ri files in #{DIR}"
   end
+
+  # Makes +op_dir+ of the files in DIR, as the generation +rdoc+ would
+  # make it on its file system, if the stamp matches it; returns false,
+  # and leaves +op_dir+ alone, if not.  The files are hard links to those
+  # in DIR, or copies across file systems; created.rid lists the files
+  # parsed as after a generation.
+  def reuse(rdoc, args, op_dir)
+    return false unless File.file?(STAMP)
+    data, generation = File.readlines(STAMP, chomp: true).partition {|line| line.start_with?("files ", "case ")}
+    current = stamp(rdoc, args)
+    unless generation == current
+      line = (generation - current).first || (current - generation).first
+      puts "#{STAMP} does not match (#{line[/\S+\z/]}): generating the ri files"
+      return false
+    end
+    files, bytes = data.shift.split.drop(1).map(&:to_i)
+    FileUtils.rm_rf(op_dir)
+    FileUtils.mkdir_p(op_dir)
+    rdoc.update_output_dir(op_dir, Time.now, rdoc.last_modified)
+    names = {}
+    extra = []
+    unless case_insensitive?(op_dir)
+      data.each do |line|
+        file, src = line.delete_prefix("case ").split("\t", 2)
+        src.start_with?("#{CASES}/") ? extra << [src, file] : names[src] = file
+      end
+    end
+    dirs = {op_dir => true}
+    link = true
+    put = proc do |src, file|
+      dest = File.join(op_dir, file)
+      dir = File.dirname(dest)
+      dirs[dir] ||= FileUtils.mkdir_p(dir)
+      begin
+        link &&= File.link(src, dest)
+      rescue SystemCallError
+        link = false
+      end
+      IO.copy_stream(src, dest) unless link
+    end
+    Dir.glob("**/*", base: DIR) do |file|
+      src = File.join(DIR, file)
+      next unless File.file?(src)
+      files -= 1
+      bytes -= File.size(src)
+      put.(src, names[file] || file)
+    end
+    extra.each {|src, file| put.(File.join(DIR, src), file)}
+    unless files == 0 and bytes == 0
+      FileUtils.rm_rf(op_dir)
+      puts "#{DIR} has other files than #{STAMP} says: generating the ri files"
+      return false
+    end
+    puts "Using the ri files of #{DIR}"
+    true
+  end
+
+  # Whether +op_dir+ has files of DIR, as #reuse makes it.
+  def linked?(op_dir)
+    File.identical?(File.join(op_dir, "cache.ri"), File.join(DIR, "cache.ri"))
+  end
 end
 
 # A listing of the files parsed, with the options of a generation.
@@ -351,7 +412,14 @@ new_rdoc = proc do
 end
 
 op_dir = File.expand_path(options.op_dir || "doc", invoked)
-FileUtils.rm_rf(op_dir) if package # a fresh generation
+if package
+  FileUtils.rm_rf(op_dir)       # a fresh generation
+elsif options.generator_name == "ri" and !options.dry_run
+  # the files of the package when they are those of this generation
+  exit if RDocPackage.reuse(new_rdoc.(), args, op_dir)
+  # a generation writes in the files it finds, not in those of doc/ri
+  FileUtils.rm_rf(op_dir) if RDocPackage.linked?(op_dir)
+end
 
 rdoc = RDoc::RDoc.new
 rdoc.build_rbconfig = build_rbconfig
