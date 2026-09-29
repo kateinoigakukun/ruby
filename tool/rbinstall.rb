@@ -263,6 +263,7 @@ end
 def install_recursive(srcdir, dest, options = {})
   opts = options.clone
   noinst = opts.delete(:no_install)
+  jobs = opts.delete(:jobs)
   glob = opts.delete(:glob) || "*"
   maxdepth = opts.delete(:maxdepth)
   subpath = (srcdir.size+1)..-1
@@ -308,6 +309,10 @@ def install_recursive(srcdir, dest, options = {})
       paths.insert(0, *files)
     end
   end
+  if jobs and jobs > 1 and !block_given? and !$dryrun and Process.respond_to?(:fork) and
+     found.count {|_, _, dir| !dir} >= 1000
+    return install_in_processes(found, subpath, jobs, opts)
+  end
   for src, d, dir in found
     if dir
       next
@@ -321,6 +326,70 @@ def install_recursive(srcdir, dest, options = {})
       end
     end
   end
+end
+
+# The processes to install many files (the documents) with: the -j of
+# make (in MAKEFLAGS), the number of processors under make -j without a
+# number or with only a jobserver, else 1; at most 4, as copying files is
+# bound by the file system and more processes did not make it sooner on
+# APFS or ext4.
+def file_jobs
+  flags = [ENV["MAKEFLAGS"], *$mflags].join(" ")
+  jobs = flags.scan(/(?:\A|\s)(?:-j|--jobs=?)(\d*)(?=\s|\z)/).map {|n,| n.to_i}
+  if (n = jobs.find(&:positive?))
+    [n, 4].min
+  elsif jobs.empty? and !/(?:\A|\s)--jobserver-(?:auth|fds)=/.match?(flags)
+    1
+  else
+    require 'etc'
+    [Etc.nprocessors, 4].min
+  end
+rescue LoadError
+  4
+end
+
+# Installs the files +found+ by install_recursive in +jobs+ processes,
+# this one included, each copying the files of some top-level
+# directories.  The directories are made, and the installed list written,
+# here beforehand, in the order and with the lines of an installation in
+# one process.
+def install_in_processes(found, subpath, jobs, opts)
+  groups = {}
+  for src, d, dir in found
+    next if dir
+    makedirs(d[/.*(?=\/)/m])
+    next if $installed[d]
+    $installed[d] = true
+    $installed_list.puts d if $installed_list
+    (groups[src[subpath][/\A[^\/]*/].downcase] ||= []) << [src, d]
+  end
+  shares = Array.new(jobs) {[]}
+  groups.values.sort_by {|group| -group.size}.each {|group| shares.min_by(&:size).concat(group)}
+  copy = proc do |share|
+    $installed = {}
+    $installed_list = nil
+    share.each {|src, d| install src, d, opts}
+  end
+  mine, *others = shares
+  pids = others.map do |share|
+    fork do
+      begin
+        copy.(share)
+      rescue Exception => e
+        warn e.full_message
+        exit!(false)
+      end
+      exit!(true)
+    end
+  end
+  installed, list = $installed, $installed_list
+  begin
+    copy.(mine)
+  ensure
+    $installed, $installed_list = installed, list
+    failed = pids.count {|pid| !Process.wait2(pid)[1].success?}
+  end
+  raise "#{failed} of #{jobs} processes failed to install files" if failed > 0
 end
 
 def open_for_install(path, mode)
@@ -1094,14 +1163,14 @@ install?(:doc, :rdoc) do
   if $rdocdir
     ridatadir = File.join(CONFIG['ridir'], CONFIG['ruby_version'], "system")
     prepare "rdoc", ridatadir
-    install_recursive($rdocdir, ridatadir, :no_install => rdoc_noinst, :mode => $data_mode)
+    install_recursive($rdocdir, ridatadir, :no_install => rdoc_noinst, :mode => $data_mode, :jobs => file_jobs)
   end
 end
 
 install?(:doc, :html) do
   if $htmldir
     prepare "html-docs", docdir
-    install_recursive($htmldir, docdir+"/html", :no_install => rdoc_noinst, :mode => $data_mode)
+    install_recursive($htmldir, docdir+"/html", :no_install => rdoc_noinst, :mode => $data_mode, :jobs => file_jobs)
   end
 end
 
