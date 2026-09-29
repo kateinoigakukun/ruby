@@ -16,7 +16,42 @@ options.title = options.title.sub(/Ruby \K.*version/) {
     .sort # "MAJOR" < "MINOR", fortunately
     .to_h.values.join(".")
 }
-options.parse ARGV + ["#{invoked}/rbconfig.rb"]
+options.parse ARGV
+
+# rbconfig.rb is generated in the build directory, and .document lists it
+# as a file of srcdir.  Document the one of an out-of-tree build under that
+# name too, not its path, which the files of RbConfig and its methods would
+# record, and parse it once and in the same order as in-tree.
+module RDocBuildRbconfig
+  NAME = "rbconfig.rb"
+
+  attr_accessor :build_rbconfig
+
+  def normalized_file_list(files, force_doc = false, exclude = nil)
+    list = super
+    if force_doc and (path = build_rbconfig) and !list.key?(NAME) and
+       (stat = File.stat(path) rescue nil)
+      last = @last_modified[NAME]
+      list[NAME] = (stat.mtime unless last and stat.mtime.to_i <= last.to_i)
+    end
+    list
+  end
+
+  def parse_file(filename)
+    return super unless filename == NAME and (path = build_rbconfig)
+    Dir.chdir(File.dirname(path)) {super}
+  end
+
+  def relative_path_for(filename)
+    filename == NAME && build_rbconfig ? filename.dup : super
+  end
+end
+RDoc::RDoc.prepend(RDocBuildRbconfig)
+
+build_rbconfig = File.join(invoked, RDocBuildRbconfig::NAME)
+if !File.exist?(build_rbconfig) or File.identical?(build_rbconfig, RDocBuildRbconfig::NAME)
+  build_rbconfig = nil          # in-tree, .document finds it
+end
 
 options.singleton_class.define_method(:finish) do
   super()
@@ -130,6 +165,7 @@ end
 RDoc::Store.prepend(RDocParallelSave)
 
 rdoc = RDoc::RDoc.new
+rdoc.build_rbconfig = build_rbconfig
 rdoc.singleton_class.define_method(:generate) do
   @store.save_jobs = rdoc_jobs
   super()
