@@ -75,18 +75,66 @@ rescue LoadError
   4
 end
 
+# On a case-insensitive file system, the files of names that differ only
+# in case (Net::HTTPGatewayTimeOut and Net::HTTPGatewayTimeout) are one.
+# RDoc::Store#save_class merged the class it saves with the file it finds,
+# there that of the other class, and put the object it loaded in the store,
+# where the files saved later referred to it (Net/cdesc-Net.ri): the ri
+# files depended on the file system.  Keep the file of the name saved first
+# in this run instead, and save the others as a dry run, as if they had no
+# file: the files written are those of a case-sensitive file system, but
+# only the first of those that are one.
+module RDocCaseCollision
+  def save_class(klass)
+    shadowed(class_file(klass.full_name)) {super}
+  end
+
+  def save_method(klass, method)
+    shadowed(method_file(klass.full_name, method.full_name)) {super}
+  end
+
+  def save_page(page)
+    return super unless page.text?
+    shadowed(page_file(page.full_name)) {super}
+  end
+
+  def load_class_data(klass_name)
+    if @shadowed and class_file(klass_name) == @shadowed
+      raise RDoc::Store::MissingFileError.new(self, @shadowed, klass_name)
+    end
+    super
+  end
+
+  private
+
+  def shadowed(path)
+    return yield if @dry_run
+    first = (@saved_paths ||= {})[path.downcase] ||= path
+    return yield if first == path or !File.identical?(first, path)
+    begin
+      @dry_run, @shadowed = true, path
+      yield
+    ensure
+      @dry_run = @shadowed = nil
+    end
+  end
+end
+RDoc::Store.prepend(RDocCaseCollision)
+
 # Writing the ri files (RDoc::Store#save) takes most of the time: split it
 # among processes, each writing the files of some classes and modules (with
 # their methods and attributes) and pages once this process has run
 # RDoc::Store#save as a dry run for the cache, which it writes last.
 #
-# RDoc::Store#save_class merges what it saves with the file it finds.  That
-# is a file of an earlier run, which the dry run reads before any is
-# written, or, on a case-insensitive file system, the file of another class
-# or module whose name differs only in case: this process writes those, and
-# the other classes and modules of their top-level namespace, which the
-# merge may change, in its dry run.  Each other top-level namespace is
-# written by one process in the order of RDoc::Store#save.
+# RDoc::Store#save_class merges what it saves with the file it finds, of an
+# earlier run, which the dry run reads before any is written.  The classes
+# and modules whose names differ only in case, and so the others of their
+# top-level namespace, are written by this process, in its dry run, for
+# RDocCaseCollision to see them in the order of RDoc::Store#save.  Each
+# other top-level namespace is written by one process in that order.  The
+# directories are made beforehand, in that order too: on a case-insensitive
+# file system the name of a directory is the first one it is made with
+# (File/ for the class File and for the pages in doc/file/).
 module RDocParallelSave
   attr_accessor :save_jobs
 
@@ -104,6 +152,8 @@ module RDocParallelSave
       loads[share] += klasses.sum(&size) unless share == :self
     end
     all_files.each_with_index {|file, i| owner[file] = i % jobs}
+    all_classes_and_modules.each {|klass| FileUtils.mkdir_p(class_path(klass.full_name))}
+    all_files.each {|file| FileUtils.mkdir_p(File.dirname(page_file(file.full_name))) if file.text?}
     writers = []
     pids = Array.new(jobs) do |share|
       r, w = IO.pipe
