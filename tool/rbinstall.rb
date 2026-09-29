@@ -173,7 +173,9 @@ def parse_args(argv = ARGV)
   end
 end
 
-Compressors = {".gz"=>"gzip", ".bz2"=>"bzip2"}
+# gzip -n: no name or time in the header, which would be the time of the
+# installation (BSD gzip) or of the source file (GNU gzip, given a file)
+Compressors = {".gz"=>"gzip -n", ".bz2"=>"bzip2"}
 def Compressors.for(type)
   ext = File.extname(type)
   if compress = fetch(ext, nil)
