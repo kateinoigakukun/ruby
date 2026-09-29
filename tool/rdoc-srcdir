@@ -367,34 +367,71 @@ module RDocPackage
         src.start_with?("#{CASES}/") ? extra << [src, file] : names[src] = file
       end
     end
-    dirs = {op_dir => true}
-    link = true
-    put = proc do |src, file|
-      dest = File.join(op_dir, file)
-      dir = File.dirname(dest)
-      dirs[dir] ||= FileUtils.mkdir_p(dir)
-      begin
-        link &&= File.link(src, dest)
-      rescue SystemCallError
-        link = false
-      end
-      IO.copy_stream(src, dest) unless link
-    end
+    list = []
     Dir.glob("**/*", base: DIR) do |file|
       src = File.join(DIR, file)
       next unless File.file?(src)
       files -= 1
       bytes -= File.size(src)
-      put.(src, names[file] || file)
+      list << [src, names[file] || file]
     end
-    extra.each {|src, file| put.(File.join(DIR, src), file)}
     unless files == 0 and bytes == 0
       FileUtils.rm_rf(op_dir)
       puts "#{DIR} has other files than #{STAMP} says: generating the ri files"
       return false
     end
+    extra.each {|src, file| list << [File.join(DIR, src), file]}
+    in_processes(list, [rdoc_jobs, FILE_JOBS].min) do |share|
+      dirs = {op_dir => true}
+      link = true
+      share.each do |src, file|
+        dest = File.join(op_dir, file)
+        dir = File.dirname(dest)
+        dirs[dir] ||= FileUtils.mkdir_p(dir)
+        begin
+          link &&= File.link(src, dest)
+        rescue SystemCallError
+          link = false
+        end
+        IO.copy_stream(src, dest) unless link
+      end
+    end
     puts "Using the ri files of #{DIR}"
     true
+  end
+
+  # The processes #reuse makes the files with, at most: making files is
+  # bound by the file system, and more processes than this did not make
+  # them sooner on APFS or ext4.
+  FILE_JOBS = 4
+
+  # Yields shares of +list+ of [source, name] pairs, each in one of +jobs+
+  # processes (this one included); the names of a top-level directory,
+  # whatever their case, are in one share.
+  def in_processes(list, jobs)
+    return yield(list) if jobs < 2 or list.size < 1000 or !Process.respond_to?(:fork)
+    shares = Array.new(jobs) {[]}
+    list.group_by {|_, name| name[/\A[^\/]*/].downcase}.values.sort_by {|group| -group.size}.each do |group|
+      shares.min_by(&:size).concat(group)
+    end
+    mine, *others = shares
+    pids = others.map do |share|
+      fork do
+        begin
+          yield share
+        rescue Exception => e
+          warn e.full_message
+          exit!(false)
+        end
+        exit!(true)
+      end
+    end
+    begin
+      yield mine
+    ensure
+      failed = pids.count {|pid| !Process.wait2(pid)[1].success?}
+    end
+    raise "#{failed} of #{jobs} processes failed to make ri files" if failed > 0
   end
 
   # Whether +op_dir+ has files of DIR, as #reuse makes it.
