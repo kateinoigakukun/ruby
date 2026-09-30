@@ -2770,6 +2770,12 @@ RULES
     suffixes = []
     depout = []
     cont = implicit = nil
+    # nmake does not look up targets in VPATH, and makes a target the
+    # source directory already has, as a package ships generated files,
+    # again in the build directory.  Out of the source directory, look
+    # such targets up as their prerequisites are.
+    vpath_target = RULE_SUBST && $srcdir && !File.identical?($srcdir, ".") &&
+      proc {|t| File.file?(File.join($srcdir, t)) ? RULE_SUBST % t : t}
     impconv = proc do
       each_compile_rules {|rule| depout << (rule % implicit[0]) << implicit[1]}
       implicit = nil
@@ -2790,6 +2796,9 @@ RULES
       elsif RULE_SUBST and /\A(?!\s*\w+\s*=)[$\w][^#]*:/ =~ line
         line.sub!(/\s*\#.*$/, '')
         comment = $&
+        if vpath_target
+          line.sub!(/\A[^:]*/) {|t| t.gsub(%r"(?<!\S)(?!\.)[^$(){}+=:\s\\,]+(?!\S)", &vpath_target)}
+        end
         line.gsub!(%r"(\s)(?!\.)([^$(){}+=:\s\\,]+)(?=\s|\z)") {$1 + RULE_SUBST % $2}
         line = line.chomp + comment + "\n" if comment
       end

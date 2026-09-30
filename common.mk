@@ -1101,7 +1101,7 @@ $(ENC_MK): $(srcdir)/enc/make_encmake.rb $(srcdir)/enc/Makefile.in $(srcdir)/enc
 
 PHONY:
 
-parse.c: {$(VPATH)}parse.y {$(VPATH)}id.h
+{$(VPATH)}parse.c: {$(VPATH)}parse.y {$(VPATH)}id.h
 parse.h: {$(VPATH)}parse.c
 
 {$(srcdir)}.y.c:
