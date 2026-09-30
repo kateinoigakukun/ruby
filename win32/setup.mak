@@ -27,6 +27,16 @@ CPP = $(CC) -EP
 !if "$(HAVE_BASERUBY)" != "no" && "$(BASERUBY)" == ""
 BASERUBY = ruby
 !endif
+!if "$(HAVE_BASERUBY)" == ""
+# Unless --with-baseruby is given, go on without a usable ruby, as
+# --without-baseruby does; a release package has the files made with
+# it, and uses the dependencies in $(srcdir)/depend.
+! if [cd $(srcdir:/=\)\tool && $(BASERUBY:/=\) missing-baseruby.bat > nul 2> nul]
+HAVE_BASERUBY = no
+BASERUBY =
+MISSING_BASERUBY = yes
+! endif
+!endif
 
 all: -prologue- -generic- -epilogue-
 i386-mswin32: -prologue- -i386- -epilogue-
@@ -53,6 +63,8 @@ prefix = $(prefix:\=/)
 -baseruby-: nul
 !if "$(HAVE_BASERUBY)" != "no"
 	@cd $(srcdir:/=\)\tool && $(BASERUBY:/=\) missing-baseruby.bat --verbose || exit $(HAVE_BASERUBY:yes=non-)0
+!elseif "$(MISSING_BASERUBY)" == "yes"
+	@(echo HAVE_BASERUBY = no& echo BASERUBY =) >>$(MAKEFILE)
 !endif
 
 # Unlike -baseruby-, this runs in the build directory, where a just
