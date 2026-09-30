@@ -163,7 +163,11 @@ CPU = $(MACHINE)
 ARCH = $(MACHINE)
 !endif
 !if !defined(DEBUGFLAGS)
-DEBUGFLAGS = -Zi
+# Keep the debugging information in each object file instead of a
+# vc*.pdb shared by the compilations in a directory, which cannot run
+# in parallel without -FS and stamps each object with the signature of
+# that PDB.  The linker still makes a PDB for each executable and DLL.
+DEBUGFLAGS = -Z7
 !endif
 !if "$(RUBY_DEVEL)" == "yes"
 XCFLAGS = $(XCFLAGS) -DRUBY_DEVEL=1
@@ -282,6 +286,12 @@ RUNTIMEFLAG   = -MD
 !if !defined(COMPILERFLAG)
 COMPILERFLAG  = -Zm600
 !endif
+# Make the same objects, libraries and images from the same sources,
+# without time stamps.
+!if !defined(REPRO_FLAG)
+REPRO_FLAG    = -Brepro
+!endif
+COMPILERFLAG  = $(COMPILERFLAG) $(REPRO_FLAG)
 !if !defined(WARNFLAGS)
 WARNFLAGS = -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574 \
 	    -wd4668 -wd4710 -wd4711 -wd4820 -wd4996 \
@@ -307,6 +317,7 @@ CXXFLAGS = $(CFLAGS)
 !if !defined(LDFLAGS)
 LDFLAGS = -incremental:no -debug -opt:ref -opt:icf
 !endif
+LDFLAGS = $(LDFLAGS) $(REPRO_FLAG)
 XLDFLAGS = -stack:$(STACK) $(XLDFLAGS)
 !if !defined(RFLAGS)
 RFLAGS = -r
@@ -347,7 +358,7 @@ COROUTINE_H = $(COROUTINE_OBJ:.obj=.h)
 COROUTINE_TEST_LINK = $(CC) $(COROUTINE_TEST_OBJS) $(COROUTINE_OBJ) $(MAINLIBS) $(OUTFLAG)$(COROUTINE_TEST) -link $(LDFLAGS) $(XLDFLAGS)
 COROUTINE_TEST_RUN = .\$(COROUTINE_TEST)
 
-ARFLAGS = -machine:$(MACHINE) -out:
+ARFLAGS = -machine:$(MACHINE) $(REPRO_FLAG) -out:
 LD = $(CC)
 LDSHARED = $(LD) -LD
 XCFLAGS = -DRUBY_EXPORT $(INCFLAGS) $(XCFLAGS) $(XINCFLAGS)
