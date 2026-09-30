@@ -286,12 +286,13 @@ RUNTIMEFLAG   = -MD
 !if !defined(COMPILERFLAG)
 COMPILERFLAG  = -Zm600
 !endif
-# Make the same objects, libraries and images from the same sources,
-# without time stamps.
+# Make the same libraries and images from the same sources, without
+# time stamps.  Only for link and lib: -Brepro keeps cl from generating
+# code in parallel threads, and the objects differ only in the time
+# stamp in their COFF headers without it.
 !if !defined(REPRO_FLAG)
 REPRO_FLAG    = -Brepro
 !endif
-COMPILERFLAG  = $(COMPILERFLAG) $(REPRO_FLAG)
 !if !defined(WARNFLAGS)
 WARNFLAGS = -W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574 \
 	    -wd4668 -wd4710 -wd4711 -wd4820 -wd4996 \
