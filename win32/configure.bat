@@ -293,7 +293,7 @@ if defined optdirs (echo>>%config_make% optdirs = %optdirs:~1%)
   echo !if "$(optdirs)" != ""
   for %%I in ("$(optdirs:\=/)" "$(optdirs:/;=;)") do @echo optdirs = %%~I
   echo XINCFLAGS = -I"$(optdirs:;=/include" -I")/include"
-  echo XLDFLAGS = -libpath:"$(optdirs:;=/lib" -libpath:")/lib"
+  echo LDFLAGS_OPTDIR = -libpath:"$(optdirs:;=/lib" -libpath:")/lib"
   echo !endif
 
   if not "%pathlist%" == "" (

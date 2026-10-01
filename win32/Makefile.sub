@@ -325,6 +325,12 @@ CXXFLAGS = $(CFLAGS)
 !if !defined(LDFLAGS)
 LDFLAGS = -incremental:no -debug -opt:ref -opt:icf
 !endif
+# The library directories of --with-opt-dir are in LDFLAGS (and so in
+# DLDFLAGS), as configure.ac puts them there: the extensions' links and
+# rbconfig.rb's LDFLAGS have them too.
+!if defined(LDFLAGS_OPTDIR)
+LDFLAGS = $(LDFLAGS) $(LDFLAGS_OPTDIR)
+!endif
 LDFLAGS = $(LDFLAGS) $(REPRO_FLAG)
 XLDFLAGS = -stack:$(STACK) $(XLDFLAGS)
 !if !defined(RFLAGS)
