@@ -474,6 +474,13 @@ AS_IF([test "$GCC" = yes], [
 RUBY_PROG_GNU_LD
 RUBY_CPPOUTFILE
 
+AS_CASE(["$target_os"], [mswin*], [
+    # for the makefiles and mkmf; the checks run cl through a driver
+    # taking the options of cc, such as the compile script of automake.
+    : ${OUTFLAG=-Fe}
+    : ${COUTFLAG=-Fo}
+    : ${CSRCFLAG=-Tc}
+])
 : ${OUTFLAG='-o '}
 : ${COUTFLAG=${OUTFLAG}}
 : ${CSRCFLAG=''}
@@ -3350,7 +3357,13 @@ AS_CASE(["$target_os"],
     ], [
 	LDFLAGS="$LDFLAGS -rdynamic"
     ])])
-LIBEXT=a
+AS_CASE(["$target_os"], [mswin*], [
+    LIBEXT=lib
+    ASMEXT=asm
+], [
+    LIBEXT=a
+    ASMEXT=S
+])
 
 AC_SUBST(DLDFLAGS)dnl
 AC_SUBST(ARCH_FLAG)dnl
@@ -3361,7 +3374,7 @@ AC_SUBST(LDSHARED)dnl
 AC_SUBST(LDSHAREDXX)dnl
 AC_SUBST(DLEXT)dnl
 AC_SUBST(LIBEXT)dnl
-AC_SUBST(ASMEXT, S)dnl
+AC_SUBST(ASMEXT)dnl
 
 STATIC=
 
@@ -3491,6 +3504,13 @@ AC_SUBST(PROGRAM_EXTS, [${EXTSTATIC:+exts}])
 			: ${LDSHARED='$(CC) -shared'}
 			XLDFLAGS="$XLDFLAGS -Wl,--stack,0x00200000,--enable-auto-import"
 			DLDFLAGS="${DLDFLAGS} -Wl,--enable-auto-image-base,--enable-auto-import"
+			: ${LIBPATHENV=PATH}
+			: ${PRELOADENV=""}
+			rb_cv_dlopen=yes],
+	[mswin*], [	# win32/Makefile.sub
+			: ${LDSHARED='$(CC) -LD'}
+			AS_CASE(["$target_cpu"], [x64], [: ${STACK=0x400000}], [: ${STACK=0x200000}])
+			XLDFLAGS="-stack:$STACK${XLDFLAGS:+ $XLDFLAGS}"
 			: ${LIBPATHENV=PATH}
 			: ${PRELOADENV=""}
 			rb_cv_dlopen=yes],
@@ -4008,7 +4028,9 @@ AS_IF([test "$enable_rpath" = yes], [
 ])
 AC_SUBST(LIBRUBY_RELATIVE)
 
+AS_CASE(["$target_os"], [mswin*], [], [
 LDFLAGS="-L. $LDFLAGS"
+])
 AC_SUBST(ARCHFILE)
 
 AS_IF([test "$EXEEXT" = .exe], [
@@ -4477,6 +4499,28 @@ enum {
 	  rm -f /tmp/main.o
 	  CFLAGS="$CFLAGS -std"
 	])
+	],
+    [mswin*], [
+	# win32/Makefile.sub
+	AS_IF([test x"$enable_shared" != xyes], [
+	    AC_MSG_ERROR([mswin needs --enable-shared])
+	])
+	LIBRUBY_SO='$(RUBY_SO_NAME).dll'
+	LIBRUBY_SONAME='$(RUBY_SO_NAME).dll'
+	LIBRUBY_ALIASES=''
+	LIBRUBY_A='$(RUBY_SO_NAME)-static.lib'
+	LIBRUBY='$(RUBY_SO_NAME).lib'
+	LIBRUBYARG='$(LIBRUBYARG_SHARED)'
+	LIBRUBYARG_SHARED='$(LIBRUBY)'
+	LIBRUBYARG_STATIC='$(LIBRUBY_A)'
+	LIBRUBY_DLDFLAGS='$(EXTLDFLAGS) -implib:dummy.lib -def:$(RUBYDEF)'
+	EXPORT_PREFIX=' '
+	AC_LIBOBJ([win32/win32])
+	AC_LIBOBJ([win32/file])
+	COMMON_LIBS=m
+	COMMON_MACROS="WIN32_LEAN_AND_MEAN WIN32"
+	COMMON_HEADERS="winsock2.h ws2tcpip.h windows.h"
+	PLATFORM_DIR=win32
 	],
     [cygwin*|msys*|mingw*], [
 	LIBRUBY_DLDFLAGS="${LIBRUBY_DLDFLAGS}"' -Wl,--out-implib=$(LIBRUBY)'
@@ -4984,6 +5028,47 @@ AS_IF([test x"$CC_WRAPPER" != x], [
 ])
 AC_SUBST(CC_WRAPPER, '')
 AC_SUBST(XCC_WRAPPER)
+
+AS_CASE(["$target_os"], [mswin*], [
+    # The checks above run cl and lib through drivers taking the options
+    # of cc and ar, such as the compile and ar-lib scripts of automake.
+    # The makefiles and mkmf run them directly, with the options of
+    # win32/Makefile.sub.
+    for var in CC CXX AR; do
+	eval val=\"\$$var\"
+	val=`echo " $val" | sed ['s,^ \([^ ]*[\\/]\)*compile , ,;s,^ \([^ ]*[\\/]\)*ar-lib , ,;s/^ *//']`
+	eval $var=\$val
+    done
+    RUBY_APPEND_OPTION(CC, -nologo)
+    RUBY_APPEND_OPTION(CC, -source-charset:utf-8)
+    CPP='$(CC) -E'
+    CXX='$(CC)'
+    LD='$(CC)'
+    RUBY_APPEND_OPTION(AR, -nologo)
+    AS_CASE(["$target_cpu"], [i386], [rb_machine=x86], [rb_machine=$target_cpu])
+    ARFLAGS="-machine:$rb_machine -Brepro -out:"
+    RANLIB=
+    STRIP=
+    SOLIBS=
+    CPPOUTFILE=-P
+    try_header=try_compile
+    AS_IF([test -z "${ac_env_CXXFLAGS_set}"], [CXXFLAGS='$(CFLAGS)'])
+    for var in LIBS MAINLIBS LDFLAGS DLDFLAGS; do
+	eval val=\"\$$var\"
+	val=`echo " $val " | sed ['s/ -l\([^ ]*\)/ \1.lib/g;s/ -L\([^ ]*\)/ -libpath:\1/g;s/^ *//;s/ *$//']`
+	eval $var=\$val
+    done
+    AS_IF([test -z "${ac_env_LDFLAGS_set}"], [
+	LDFLAGS="-incremental:no -debug -opt:ref -opt:icf${LDFLAGS:+ $LDFLAGS}"
+    ])
+    # Make the same libraries and images from the same sources.
+    LDFLAGS="$LDFLAGS -Brepro -manifest:embed,ID=2"
+    DLDFLAGS="$LDFLAGS -dll "'$(LIBPATH)'
+    LIBPATHFLAG='-libpath:%s'
+    RPATHFLAG=
+    LINK_SO='$(LDSHARED) -Fe$(@) $(OBJS) $(LIBS) $(LOCAL_LIBS) -link $(DLDFLAGS) -implib:$(*F:.so=)-$(arch).lib -pdb:$(*F:.so=)-$(arch).pdb -def:$(DEFFILE)'
+    TRY_LINK='$(CC) -Feconftest $(INCFLAGS) -I$(hdrdir) $(CPPFLAGS) $(CFLAGS) $(src) $(LOCAL_LIBS) $(LIBS) -link $(LDFLAGS) $(LIBPATH) $(XLDFLAGS)'
+])
 
 AS_CASE([" $CPP "], [*" $CC "*], [CPP=`echo " $CPP " | sed "s| $CC |"' $(CC) |;s/^ *//;s/  *$//'`])
 
