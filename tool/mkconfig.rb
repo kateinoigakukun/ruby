@@ -31,6 +31,9 @@ continued_line = nil
 install_name = nil
 so_name = nil
 platform = nil
+# The values of an autoconf config.status are awk strings: `"` and `\`
+# escaped with a backslash, a newline as `\n`.
+unescape = proc {|s| s.gsub(/\\(.)/) {$1 == "n" ? "\n" : $1}}
 File.foreach "config.status" do |line|
   next if /^#/ =~ line
   name = nil
@@ -39,19 +42,18 @@ File.foreach "config.status" do |line|
     name = $2
     val = $3.gsub(/\\(?=,)/, '')
   when /^S\["(\w+)"\]\s*=\s*"(.*)"\s*(\\)?$/
-    name = $1
-    val = $2
-    if $3
+    name, val, continued = $1, $2, $3
+    if continued
       continued_line = [val]
       continued_name = name
       next
     end
+    val = unescape[val]
   when /^"(.*)"\s*(\\)?$/
     next if !continued_line
     continued_line << $1
     next if $2
-    continued_line.each {|s| s.sub!(/\\n\z/, "\n")}
-    val = continued_line.join
+    val = continued_line.map(&unescape).join
     name = continued_name
     continued_line = nil
   when /^(?:ac_given_)?INSTALL=(.*)/
