@@ -1100,6 +1100,60 @@ AS_CASE(["$target_cpu"], [[i[3-6]86*]], [
     AS_IF([test "$rb_cv_gcc_compiler_cas" = i486], [ARCH_FLAG="-march=i486"])
 ])
 
+AS_CASE(["$target_os"], [mswin*], [
+    # Visual C++; the flags follow win32/Makefile.sub, and the version
+    # checks win32/setup.mak (verconf.mk).
+    AC_CACHE_CHECK([for the version of Visual C++], rb_cv_msc_ver, [
+	AC_COMPUTE_INT(rb_cv_msc_ver, [_MSC_VER], [], [rb_cv_msc_ver=0])
+    ])
+    AS_IF([test "$rb_cv_msc_ver" -lt 1915], [
+	AC_MSG_ERROR([MSVC $rb_cv_msc_ver is not supported.  1915 (Visual Studio 2017 version 15.8) or later is required for the conforming preprocessor.])
+    ])
+    # The objects are for the Visual C++ of the same series only.
+    AS_IF([test "$rb_cv_msc_ver" -ge 1920], [
+	msc_ver_lower=`expr $rb_cv_msc_ver / 20 \* 20`
+	msc_ver_upper=`expr $msc_ver_lower + 19`
+    ], [
+	msc_ver_lower=`expr $rb_cv_msc_ver / 10 \* 10`
+	msc_ver_upper=`expr $msc_ver_lower + 9`
+    ])
+    cat >> confdefs.h <<EOF
+@%:@if (_MSC_VER < $msc_ver_lower) || (_MSC_VER > $msc_ver_upper)
+@%:@error MSC version unmatch: $msc_ver_lower..$msc_ver_upper is expected.
+@%:@endif
+EOF
+    AS_IF([test -z "${ac_env_CFLAGS_set}"], [
+	# RUNTIMEFLAG and COMPILERFLAG
+	orig_cflags="-MD${orig_cflags:+ $orig_cflags} -Zm600"
+	cflags='${hardenflags} '"$orig_cflags "'${optflags} ${debugflags} ${warnflags}'
+    ])
+    # Keep the debugging information in each object file instead of a
+    # vc*.pdb shared by the compilations in a directory.
+    : ${debugflags=-Z7}
+    : ${optflags=-O2sy-}
+    RUBY_APPEND_OPTION(optflags, -Zc:inline)
+    AS_IF([test -z "${warnflags+set}"], [
+	warnflags="-W2 -wd4100 -wd4127 -wd4210 -wd4214 -wd4255 -wd4574"
+	warnflags="$warnflags -wd4668 -wd4710 -wd4711 -wd4820 -wd4996"
+	warnflags="$warnflags -we4028 -we4142 -we4047 -we4013"
+	AS_IF([test "$rb_cv_msc_ver" -ge 1944], [
+	    # https://developercommunity.visualstudio.com/t/warning-C5287:-operands-are-different-e/10877942
+	    warnflags="$warnflags -wd5287"
+	])
+    ])
+    # Unlike the warnings of GCC, keep them in the checks: -we4013,
+    # -we4028, -we4047 and -we4142 make cl reject implicit declarations
+    # and conflicting types, as C compilers do.
+    rb_cv_warnflags="$warnflags"
+    WERRORFLAG=-WX
+    # https://learn.microsoft.com/en-us/cpp/build/reference/zc-preprocessor
+    AS_IF([test "$rb_cv_msc_ver" -ge 1925], [
+	RUBY_PREPEND_OPTION(CPPFLAGS, -Zc:preprocessor)
+    ], [
+	RUBY_PREPEND_OPTION(CPPFLAGS, -experimental:preprocessor)
+    ])
+])
+
 OPT_DIR=
 AC_ARG_WITH([gmp-dir],
   AS_HELP_STRING([--with-gmp-dir=DIR],
@@ -1144,6 +1198,11 @@ AS_IF([test -z "${ac_env_CFLAGS_set}" -a -n "${cflags+set}"], [
     # with -g runs dsymutil.  Leave debugflags out of CFLAGS here; CFLAGS
     # becomes ${cflags}, which includes debugflags, at the end.
     check_cflags=`echo "$cflags" | sed 's/ \${debugflags} / /'`
+    AS_CASE(["$target_os"], [mswin*], [
+	# optflags of cl include -Oi, with which the intrinsic functions
+	# reject the prototypes of AC_CHECK_FUNCS.
+	check_cflags=`echo "$check_cflags" | sed 's/ \${optflags} / /'`
+    ])
     eval CFLAGS="\"$check_cflags $ARCH_FLAG\""
 ])
 test -z "${ac_env_CXXFLAGS_set}" -a -n "${cxxflags+set}" && eval CXXFLAGS="\"$cxxflags $ARCH_FLAG\""
@@ -1165,12 +1224,19 @@ AS_IF([test "$rb_cv_have_stmt_and_decl_in_expr" = yes], [
 
 [begin]_group "header and library section" && {
 AC_ARG_WITH(winnt-ver,
-  AS_HELP_STRING([--with-winnt-ver=0xXXXX], [target Windows NT version (default to 0x0600)]),
-  [with_winnt_ver="$withval"], [with_winnt_ver="0x0600"])
+  AS_HELP_STRING([--with-winnt-ver=0xXXXX], [target Windows NT version (default to 0x0600, _WIN32_WINNT_WIN8 on mswin)]),
+  [with_winnt_ver="$withval"], [with_winnt_ver=])
 AS_CASE(["$target_os"],
 [mingw*], [
+  : ${with_winnt_ver:=0x0600}
   RUBY_APPEND_OPTION(CPPFLAGS, -D_WIN32_WINNT=$with_winnt_ver)
   RUBY_APPEND_OPTION(CPPFLAGS, -D__MINGW_USE_VC2005_COMPAT)
+],
+[mswin*], [
+  # NTVER of win32/Makefile.sub, which config.h also defines
+  : ${with_winnt_ver:=_WIN32_WINNT_WIN8}
+  RUBY_APPEND_OPTION(CPPFLAGS, -D_WIN32_WINNT=$with_winnt_ver)
+  AC_DEFINE_UNQUOTED(_WIN32_WINNT, $with_winnt_ver)
 ])
 
 RUBY_THREAD
@@ -1344,7 +1410,16 @@ main()
 		AC_CHECK_FUNCS(cygwin_conv_path)
 		AC_LIBOBJ([langinfo])
 		],
-[mingw*], [	LIBS="-lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt $LIBS"
+[mingw*|mswin*], [
+		AS_CASE(["$target_os"], [mswin*], [
+		    # LIBS of win32/Makefile.sub; only user32 is for
+		    # extension libraries too.
+		    LIBS="user32.lib${LIBS:+ $LIBS}"
+		    ORIG_LIBS="$LIBS"
+		    LIBS="$LIBS advapi32.lib shell32.lib ws2_32.lib iphlpapi.lib imagehlp.lib shlwapi.lib bcrypt.lib"
+		], [
+		LIBS="-lshell32 -lws2_32 -liphlpapi -limagehlp -lshlwapi -lbcrypt $LIBS"
+		])
 		ac_cv_header_pwd_h=no
 		ac_cv_header_utime_h=no
 		ac_cv_header_sys_ioctl_h=no
@@ -1384,12 +1459,78 @@ main()
 		rb_cv_large_fd_select=yes
 		ac_cv_type_struct_timeval=yes
 		ac_cv_func_malloc_usable_size=no
-		ac_cv_type_off_t=yes
 		ac_cv_sizeof_off_t=8
+		AS_CASE(["$target_os"], [mswin*], [
+		    # off_t of Visual C++ is long, but win32/win32.c
+		    # handles 64-bit offsets with rb_off_t.
+		    ac_cv_type_off_t=no
+		    rb_cv_off_t_convertible=LL
+		], [
+		ac_cv_type_off_t=yes
+		])
+		AS_CASE(["$target_os"], [mswin*], [
+		    # win32/win32.c and include/ruby/win32.h provide these
+		    # (win32/Makefile.sub).
+		    ac_cv_func_gettimeofday=yes
+		    ac_cv_func_truncate=yes
+		    ac_cv_func_ftruncate=yes
+		    ac_cv_func_pipe=yes
+		    # The C runtime has only _popen and _pclose, which the
+		    # interpreter does not use; claim them as win32/Makefile.sub
+		    # does, or include/ruby/missing.h declares them.
+		    ac_cv_func_popen=yes
+		    ac_cv_func_pclose=yes
+		    # include/ruby/win32.h defines mode_t as int.
+		    rb_cv_mode_t_convertible=INT
+		    # getcwd of win32/win32.c allocates the buffer.
+		    rb_cv_getcwd_malloc=yes
+		    # struct timeval is in <winsock2.h>.
+		    ac_cv_sizeof_struct_timeval_tv_sec=SIZEOF_LONG
+		    # Neither checked nor declared by include/ruby/missing.h,
+		    # and math.c declares log2 without dllimport unless it is
+		    # a macro.
+		    AC_DEFINE(HAVE_FINITE)
+		    AC_DEFINE(HAVE_FREXP)
+		    AC_DEFINE(HAVE_MODF)
+		    AC_DEFINE(HAVE_MEMCMP)
+		    AC_DEFINE([log2(x)], [log2(x)])
+		    # The spellings of win32/Makefile.sub, which the checks
+		    # for GCC do not find.
+		    rb_cv_func___noreturn__='__declspec(noreturn) x'
+		    rb_cv_func___deprecated__='__declspec(deprecated) x'
+		    rb_cv_func___noinline__='__declspec(noinline) x'
+		    rb_cv_func___always_inline__='__forceinline x'
+		    rb_cv_func_stdcall='__stdcall x'
+		    rb_cv_func_cdecl='__cdecl x'
+		    rb_cv_func_fastcall='__fastcall x'
+		    # win32/Makefile.sub prints 64-bit integers with I64,
+		    # which every C runtime of Visual C++ knows.
+		    rb_cv_pri_prefix_long_long=I64
+		    AS_CASE(["$target_os"], [mswin64*], [rb_cv_pri_prefix_intptr_t=I64])
+		    rb_cv_pri_prefix_size_t=NONE
+		    rb_cv_pri_prefix_ptrdiff_t=NONE
+		    # win32/Makefile.sub does not use them: main() does
+		    # not call setlocale(), and RUBY_ALIGNAS is
+		    # __declspec(align).
+		    ac_cv_header_locale_h=no
+		    ac_cv_header_stdalign_h=no
+		    # nor typeof, new in Visual Studio 2022 17.9, nor
+		    # __func__, where __FUNCTION__ is a string literal.
+		    ac_cv_c_typeof=no
+		    rb_cv_function_name_string=__FUNCTION__
+		    # cl does not take __restrict in array parameters,
+		    # which AC_C_RESTRICT of autoconf 2.70 or later tries;
+		    # defining restrict empty breaks __declspec(restrict).
+		    ac_cv_c_restrict=__restrict
+		    # setjmp of <setjmp.h> is _setjmp, not _setjmpex.
+		    : ${with_setjmp_type=setjmp}
+		])
 		AS_IF([test "$target_cpu" = x64], [
+		    AS_CASE(["$target_os"], [mingw*], [
 		    ac_cv_func___builtin_setjmp=yes
 		    ac_cv_func_round=no
 		    ac_cv_func_tgamma=no
+		    ])
 		])
 		AC_CHECK_TYPE([NET_LUID], [], [],
 			      [@%:@include <winsock2.h>
@@ -1398,7 +1539,10 @@ main()
 		AS_IF([test x"$ac_cv_type_NET_LUID" = xyes], [
 		    AC_DEFINE(HAVE_TYPE_NET_LUID, 1)
 		])
-		AC_CHECK_FUNCS(_gmtime64_s)
+		AS_CASE(["$target_os"], [mingw*], [
+		    # Visual C++ has gmtime_s for 64-bit time_t.
+		    AC_CHECK_FUNCS(_gmtime64_s)
+		])
 		AC_CHECK_FUNCS(_wfreopen_s)
 		AC_LIBOBJ([langinfo])
 		],
@@ -2137,6 +2281,13 @@ AS_IF([test $rb_cv_stack_end_address != no], [
 ])
 
 dnl Checks for library functions.
+AS_CASE(["$target_os"], [mswin*], [
+    # include/ruby/win32.h uses rb_pid_t, rb_uid_t and rb_gid_t, and
+    # leaves pid_t, uid_t and gid_t to extension libraries, which
+    # AC_TYPE_PID_T and AC_TYPE_UID_T would define as macros.
+    ac_cv_type_pid_t=yes
+    ac_cv_type_uid_t=yes
+])
 AC_TYPE_GETGROUPS
 AS_CASE(["${target_cpu}-${target_os}:${target_archs}"],
 [powerpc*-darwin*], [
@@ -2845,6 +2996,15 @@ AS_CASE([$coroutine_type], [yes|''], [
         [aarch64-mingw*], [
             coroutine_type=arm64
         ],
+        [x64-mswin*], [
+            coroutine_type=win64
+        ],
+        [i386-mswin*], [
+            coroutine_type=win32
+        ],
+        [arm64-mswin*], [
+            coroutine_type=arm64
+        ],
         [arm*-linux*], [
             coroutine_type=arm32
         ],
@@ -3494,7 +3654,7 @@ AS_IF([test x$with_valgrind != xno],
     [darwin*], [
 	SOEXT=dylib
 	DLEXT=bundle],
-    [cygwin*|msys*|mingw*|*djgpp*], [
+    [cygwin*|msys*|mingw*|mswin*|*djgpp*], [
 	LOAD_RELATIVE=1
 	SOEXT=dll
 	DLEXT=so],
@@ -3640,7 +3800,7 @@ LIBRUBYARG='$(LIBRUBYARG_STATIC)'
 SOLIBS='$(MAINLIBS)'
 
 AS_CASE(["$target_os"],
-  [cygwin*|msys*|mingw*|haiku*|darwin*], [
+  [cygwin*|msys*|mingw*|mswin*|haiku*|darwin*], [
     : ${DLDLIBS=""}
     ],
   [
@@ -3671,7 +3831,7 @@ AC_ARG_WITH(soname,
 	    [cygwin*], [
 	        RUBY_SO_NAME='$(RUBY_BASE_NAME)$(MAJOR)$(MINOR)0'
 	    ],
-	    [mingw*], [
+	    [mingw*|mswin*], [
 		RUBY_SO_NAME="${rb_cv_msvcrt}"'-$(RUBY_BASE_NAME)$(MAJOR)$(MINOR)0'
 		AS_IF([test x"${target_cpu}" != xi386 || test x"${rb_cv_msvcrt}" != xmsvcrt], [
 		    RUBY_SO_NAME="${target_cpu}-${RUBY_SO_NAME}"
@@ -4527,7 +4687,7 @@ test "$program_suffix" != NONE &&
 
 RUBY_INSTALL_NAME="${ri_prefix}"'$(RUBY_BASE_NAME)'"${ri_suffix}"
 AS_CASE(["$target_os"],
-  [cygwin*|msys*|mingw*], [
+  [cygwin*|msys*|mingw*|mswin*], [
     RUBYW_INSTALL_NAME="${ri_prefix}"'$(RUBYW_BASE_NAME)'"${ri_suffix}"
     rubyw_install_name='$(RUBYW_INSTALL_NAME)'
     ])
@@ -4668,7 +4828,8 @@ AS_IF([test "${universal_binary-no}" = yes ], [
 ])
 
 unset sitearch
-AS_CASE(["$target_os"],[mingw*],[sitearch="$target_cpu-$rb_cv_msvcrt"])
+AS_CASE(["$target_os"],[mingw*|mswin*],[sitearch="$target_cpu-$rb_cv_msvcrt"])
+AS_CASE(["$target_os"],[mswin*],[AC_DEFINE_UNQUOTED(RUBY_SITEARCH, "$sitearch")])
 : ${sitearch='${arch}'}
 
 AC_ARG_WITH(search-path,
