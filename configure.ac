@@ -545,16 +545,20 @@ AC_CACHE_CHECK([for $AR flags], [rb_cv_arflags], [
 AC_SUBST(ARFLAGS, ["$rb_cv_arflags "])
 
 AS_CASE(["$target_os"],
-[cygwin*|msys*|mingw*], [
+[cygwin*|msys*|mingw*|mswin*], [
+    AS_CASE(["$target_os"], [mswin*], [], [
     AC_CHECK_TOOL(WINDRES, windres)
     AC_CHECK_TOOL(DLLWRAP, dllwrap)
+    ])
     target=`echo $target | sed "s/^$target_cpu-/-/"`
     target_alias=`echo $target_alias | sed "s/^$target_cpu-/-/"`
     target_cpu=`echo $target_cpu | sed s/i.86/i386/`
     AS_CASE(["$target"], [-*], [ target="$target_cpu${target}"])
     AS_CASE(["$target_alias"], [-*], [ target_alias="$target_cpu${target_alias}"])
+    AS_CASE(["$target_os"], [mswin*], [], [
     # cygwin/GNUmakefile.in is not exclusively for cygwin.
     FIRSTMAKEFILE=GNUmakefile:cygwin/GNUmakefile.in
+    ])
     AS_CASE(["$target_os"],
     [mingw*], [
 	test "$rb_cv_msvcrt" = "" && unset rb_cv_msvcrt
@@ -571,6 +575,32 @@ AS_CASE(["$target_os"],
 	test "$RT_VER" = "" && RT_VER=60
 	test "$rb_cv_msvcrt" = "ucrt" && RT_VER=140
 	AC_DEFINE_UNQUOTED(RUBY_MSVCRT_VERSION, $RT_VER)
+	sysconfdir=
+    ],
+    [mswin*], [
+	# win32/setup.mak -runtime- and win32/rtname.cmd
+	: ${DUMPBIN=dumpbin}
+	test "$rb_cv_msvcrt" = "" && unset rb_cv_msvcrt
+	AC_CACHE_CHECK(for Visual C++ runtime DLL, rb_cv_msvcrt, [
+	save_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS -MD"
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([[@%:@include <stdio.h>]],
+		    [[FILE* volatile f = stdin; return 0;]])],
+		    [rb_cv_msvcrt=`$DUMPBIN -dependents conftest$ac_exeext |
+				   tr -d '\015' | tr A-Z a-z |
+				   sed -n '/^[[ 	]]*\(vcruntime[[0-9]]*\|msvcr[[0-9]]*\)\.dll$/{s//\1/p;q;}'`])
+	CFLAGS="$save_CFLAGS"
+	test "$rb_cv_msvcrt" = "" && AC_MSG_ERROR([no runtime library found])])
+	RT_VER=`echo "$rb_cv_msvcrt" | tr -cd [0-9]`
+	AS_IF([test "${RT_VER:-0}" -lt 140], [
+	    AC_MSG_ERROR([Runtime library $rb_cv_msvcrt is not supported])
+	])
+	AC_DEFINE_UNQUOTED(RUBY_MSVCRT_VERSION, $RT_VER)
+	AC_DEFINE_UNQUOTED(RUBY_COREDLL, "$rb_cv_msvcrt")
+	# PLATFORM of win32/rtname.cmd
+	target_os="${target_os}_${RT_VER}"
+	target="${target_cpu}-${target_vendor}-${target_os}"
+	host_os=$target_os host=$target
 	sysconfdir=
     ])
     rb_cv_binary_elf=no
