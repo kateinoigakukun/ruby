@@ -304,7 +304,9 @@ WARNFLAGS = $(WARNFLAGS) -wd5287
 !endif
 WERRORFLAG = -WX
 !if !defined(CFLAGS_NO_ARCH)
-CFLAGS_NO_ARCH = $(RUNTIMEFLAG) $(DEBUGFLAGS) $(WARNFLAGS) $(OPTFLAGS) $(COMPILERFLAG)
+# in the order of configure.ac's cflags (-MD -Zm600 for its orig_cflags);
+# -Z7 records the command line in each object
+CFLAGS_NO_ARCH = $(RUNTIMEFLAG) $(COMPILERFLAG) $(OPTFLAGS) $(DEBUGFLAGS) $(WARNFLAGS)
 !endif
 !if !defined(ARCH_FLAG)
 ARCH_FLAG = $(PROCESSOR_FLAG)
@@ -332,14 +334,16 @@ EXTSOLIBS =
 !if !defined(LIBS)
 LIBS = user32.lib advapi32.lib shell32.lib ws2_32.lib
 LIBS = $(LIBS) iphlpapi.lib
-!if defined(USE_GMP)
-LIBS = $(LIBS) gmp.lib
-!endif
 LIBS = $(LIBS) imagehlp.lib shlwapi.lib bcrypt.lib $(EXTLIBS)
+# gmp first, as AC_CHECK_LIB prepends it in configure.ac
+!if defined(USE_GMP)
+LIBS = gmp.lib $(LIBS)
+!endif
 !endif
 !if !defined(MISSING)
-MISSING = crypt.obj ffs.obj langinfo.obj lgamma_r.obj strlcat.obj strlcpy.obj win32/win32.obj win32/file.obj setproctitle.obj
-MISSING = $(MISSING) explicit_bzero.obj memrchr.obj
+# in the order of configure.ac's LIBOBJS
+MISSING = langinfo.obj crypt.obj explicit_bzero.obj ffs.obj lgamma_r.obj memrchr.obj setproctitle.obj
+MISSING = $(MISSING) strlcat.obj strlcpy.obj win32/win32.obj win32/file.obj
 !endif
 DLNOBJS = dln.obj
 
@@ -362,7 +366,8 @@ COROUTINE_TEST_RUN = .\$(COROUTINE_TEST)
 ARFLAGS = -machine:$(MACHINE) $(REPRO_FLAG) -out:
 LD = $(CC)
 LDSHARED = $(LD) -LD
-XCFLAGS = -DRUBY_EXPORT $(INCFLAGS) $(XCFLAGS) $(XINCFLAGS)
+# Use the ruby allocator for prism (prism/defines.h), as configure.ac does.
+XCFLAGS = -DRUBY_EXPORT -DPRISM_XALLOCATOR $(INCFLAGS) $(XCFLAGS) $(XINCFLAGS)
 LDFLAGS = $(LDFLAGS) -manifest:embed,ID=2
 CPPFLAGS = $(DEFS) $(ARCHDEFS) $(CPPFLAGS)
 !if "$(USE_RUBYGEMS)" == "no"
