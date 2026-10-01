@@ -1154,6 +1154,8 @@ s,@RUBY_VERSION_NAME@,$$(RUBY_BASE_NAME)-$$(ruby_version),;t t
 !endif
 s,@rubylibprefix@,$${prefix}/lib/$${RUBY_BASE_NAME},;t t
 s,@rubyarchdir@,$${rubylibdir}/$${arch},;t t
+s,@rubyarchprefix@,$${rubylibprefix}/$${arch},;t t
+s,@rubysitearchprefix@,$${rubylibprefix}/$${sitearch},;t t
 s,@rubylibdir@,$${rubylibprefix}/$${ruby_version},;t t
 s,@sitedir@,$${rubylibprefix}/site_ruby,;t t
 s,@sitearchdir@,$${sitelibdir}/$${sitearch},;t t
