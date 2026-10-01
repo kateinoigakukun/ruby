@@ -179,8 +179,13 @@ XCFLAGS = $(XCFLAGS) -Dmodular_gc_dir="$(modular_gc_dir)"
 OPTFLAGS = -O2sy-
 !endif
 OPTFLAGS = $(OPTFLAGS) -Zc:inline
+# The header directories of --with-opt-dir are in incflags, as configure.ac
+# puts them there: every compile with $(INCFLAGS), enc.mk's too, and
+# rbconfig.rb's incflags have them.
 !if !defined(incflags)
-incflags =
+incflags = $(XINCFLAGS)
+!else if defined(XINCFLAGS)
+incflags = $(incflags) $(XINCFLAGS)
 !endif
 !if !defined(PLATFORM)
 PLATFORM = mswin32
@@ -367,7 +372,7 @@ ARFLAGS = -machine:$(MACHINE) $(REPRO_FLAG) -out:
 LD = $(CC)
 LDSHARED = $(LD) -LD
 # Use the ruby allocator for prism (prism/defines.h), as configure.ac does.
-XCFLAGS = -DRUBY_EXPORT -DPRISM_XALLOCATOR $(INCFLAGS) $(XCFLAGS) $(XINCFLAGS)
+XCFLAGS = -DRUBY_EXPORT -DPRISM_XALLOCATOR $(INCFLAGS) $(XCFLAGS)
 LDFLAGS = $(LDFLAGS) -manifest:embed,ID=2
 CPPFLAGS = $(DEFS) $(ARCHDEFS) $(CPPFLAGS)
 !if "$(USE_RUBYGEMS)" == "no"
