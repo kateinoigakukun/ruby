@@ -4178,7 +4178,8 @@ AC_ARG_ENABLE(install-static-library,
                  [AC_MSG_ERROR([must install either static or shared library])],
                  [])],
 	AS_IF([test x"$enable_shared" = xyes],
-	    [INSTALL_STATIC_LIBRARY=no],
+	    # win32/Makefile.sub installs the static library beside the DLL
+	    [AS_CASE(["$target_os"], [mswin*], [INSTALL_STATIC_LIBRARY=yes], [INSTALL_STATIC_LIBRARY=no])],
 	    [INSTALL_STATIC_LIBRARY=yes]))
 AC_SUBST(INSTALL_STATIC_LIBRARY)
 }
