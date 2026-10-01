@@ -1121,7 +1121,11 @@ test -z "${ac_env_CXXFLAGS_set}" -a -n "${cxxflags+set}" && eval CXXFLAGS="\"$cx
 
 AC_CACHE_CHECK([whether compiler has statement and declarations in expressions],
   rb_cv_have_stmt_and_decl_in_expr,
-  [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]],[[ __extension__ ({ int a = 0; a; }); ]])],
+  [AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+@%:@ifndef __GNUC__
+@%:@define __extension__ /* as internal/compilers.h */
+@%:@endif
+]],[[ __extension__ ({ int a = 0; a; }); ]])],
   [rb_cv_have_stmt_and_decl_in_expr=yes],
   [rb_cv_have_stmt_and_decl_in_expr=no])])
 AS_IF([test "$rb_cv_have_stmt_and_decl_in_expr" = yes], [
